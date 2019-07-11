@@ -5,7 +5,7 @@ unit tests for the specplot module
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
@@ -58,6 +58,7 @@ class SpecPlotGallery(unittest.TestCase):
         sys.argv.append(self.tempdir)
         sys.argv.append(self.abs_data_fname('writer_1_3.h5'))
         specplot_gallery.main()
+        # this is HDF5 file, not SPEC, so not much content
         children = os.listdir(self.tempdir)
         self.assertEqual(len(children), 1)
         self.assertEqual(children[0], 'specplot_files_processing.log')
@@ -153,7 +154,7 @@ class SpecPlotGallery(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(plotDir, '02_03_setup.dat')))
         self.assertTrue(os.path.exists(os.path.join(plotDir, 'index.html')))
      
-    def test_command_line_spec_data_file_list_reversed_chrological_issue_79(self):
+    def test_command_line_spec_data_file_list_reversed_chronological_issue_79(self):
         sys.argv.append('-r')
         sys.argv.append('-d')
         self.assertTrue(os.path.exists(self.tempdir))

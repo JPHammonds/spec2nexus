@@ -4,7 +4,7 @@
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
@@ -84,11 +84,11 @@ Get the first and last scan numbers from the file:
 
     >>> from spec2nexus import spec
     >>> spec_data = spec.SpecDataFile('path/to/my/spec_data.dat')
-    >>> print (spec_data.fileName)
+    >>> print(spec_data.fileName)
     path/to/my/spec_data.dat
-    >>> print ('first scan: ', spec_data.getFirstScanNumber())
+    >>> print('first scan: ', spec_data.getFirstScanNumber())
     1
-    >>> print ('last scan: ', spec_data.getLastScanNumber())
+    >>> print('last scan: ', spec_data.getLastScanNumber())
     22
 
 Get plottable data from scan number 10:
@@ -113,10 +113,8 @@ Try to read a file that does not exist:
 
 """
 
-
-import re       #@UnusedImport
-import os       #@UnusedImport
-import sys      #@UnusedImport
+from collections import OrderedDict
+import os
 import time
 from spec2nexus.utils import get_all_plugins
 
@@ -127,28 +125,43 @@ MCA_DATA_KEY = '_mca_'
 
 
 class SpecDataFileNotFound(IOError): 
-    '''data file was not found'''
-    pass
+    """data file was not found"""
 
 class SpecDataFileCouldNotOpen(IOError): 
-    '''data file could not be opened'''
-    pass
+    """data file could not be opened"""
 
 class NotASpecDataFile(Exception): 
-    '''content of file is not SPEC data (first line must start with ``#F``)'''
-    pass
+    """content of file is not SPEC data (first line must start with ``#F``)"""
 
 class DuplicateSpecScanNumber(Exception): 
-    '''multiple use of scan number in a single SPEC data file'''
-    pass
+    """multiple use of scan number in a single SPEC data file"""
 
 class UnknownSpecFilePart(Exception): 
-    '''unknown part in a single SPEC data file'''
-    pass
+    """unknown part in a single SPEC data file"""
 
 
 def is_spec_file(filename):
-    '''
+    """
+    test if a given file name is a SPEC data file
+    
+    :param str filename: path/to/possible/spec/data.file
+
+    *filename* is a SPEC file if it contains at least one #S control line
+    """
+    if not os.path.exists(filename) or not os.path.isfile(filename):
+        return False
+    try:
+        with open(filename, "r") as fp:
+            for line in fp.readlines():
+                if line.startswith("#S "):
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+def is_spec_file_with_header(filename):
+    """
     test if a given file name is a SPEC data file
     
     :param str filename: path/to/possible/spec/data.file
@@ -169,13 +182,14 @@ def is_spec_file(filename):
         #C LNO_LAO  User = epix33bm
     
     .. [#] SPEC manual, *Standard Data File Format*, http://www.certif.com/spec_manual/user_1_4_1.html
-    '''
-    if not os.path.exists(filename):
-        return False
-    if not os.path.isfile(filename):
+    """
+    if not os.path.exists(filename) or not os.path.isfile(filename):
         return False
     expected_controls = ('#F ', '#E ', '#D ', '#C ')
-    lines = open(filename).readlines()[:len(expected_controls)]
+    try:
+        lines = open(filename).readlines()[:len(expected_controls)]
+    except UnicodeDecodeError:
+        return False
     if len(lines) != len(expected_controls):
         return False
     for expected, line in zip(expected_controls, lines):
@@ -188,9 +202,10 @@ def is_spec_file(filename):
 
 
 class SpecDataFile(object):
-    '''
+
+    """
     contents of a spec data file
-    '''
+    """
 
     fileName = ''
     parts = ''
@@ -202,7 +217,7 @@ class SpecDataFile(object):
         global plugin_manager
         self.fileName = None
         self.headers = []
-        self.scans = {}
+        self.scans = OrderedDict()
         self.readOK = -1
         if not os.path.exists(filename):
             raise SpecDataFileNotFound('file does not exist: ' + str(filename))
@@ -219,50 +234,6 @@ class SpecDataFile(object):
     def __str__(self):
         return self.fileName or 'None'
 
-    def read(self):
-        """Reads and parses a spec data file"""
-        buf = self._read_file_(self.fileName)
-        
-        text = buf.splitlines()[0].strip()
-        key = self.plugin_manager.getKey(text)
-        if key != '#F':
-            raise NotASpecDataFile('First line does not start with #F: ' + self.fileName)
-        self.plugin_manager.process(key, text, self)
-        buf = buf[len(text):]
-
-        #------------------------------------------------------
-        # identify all header blocks: split buf on #E control lines
-        headers = []                            # caution: some files may have EOL = \r\n
-        for part in buf.split('\n#E '):         # Identify the spec file header sections (usually just 1)
-            if len(part.strip()) == 0: continue         # just in case DOS EOL
-            key = self.plugin_manager.getKey(part.splitlines()[0].strip())
-            if key != '#E':
-                headers.append('#E ' + part)        # new header is starting
-        del buf                                 # Dispose of the input buffer memory (necessary?)
-        # headers is a list of the #E header blocks (contains all #S scan blocks)
-
-        #------------------------------------------------------
-        # walk through all header blocks: split each header block on #S control lines
-        self.parts = []         # break into list of blocks, either #E or #S, in order of appearance
-        for part in headers:
-            for block in part.split('\n#S '):   # break header sections by scans
-                text = block.splitlines()[0].strip()
-                if self.plugin_manager.getKey(text) not in ('#E', '#S'):
-                    block = '#S ' + block
-                self.parts.append(block)        # keep each block (starts with either #E or #S)
-        del headers, block
-        # self.parts is a list of the #E and #S parts
-
-        #------------------------------------------------------
-        # pull the information from each scan head
-        for part in self.parts:
-            text = part.splitlines()[0].strip()
-            key = self.plugin_manager.getKey(text)
-            if key in ('#E', '#S'):
-                self.plugin_manager.process(key, part, self)
-            else:
-                raise UnknownSpecFilePart(part.splitlines()[0].strip())
-
     def _read_file_(self, spec_file_name):
         """Reads a spec data file"""
         try:
@@ -278,51 +249,104 @@ class SpecDataFile(object):
         # convert all '\r\n' to '\n', then all '\r' to '\n'
 
         return buf.replace('\r\n', '\n').replace('\r', '\n')
+
+    def dissect_file(self):
+        """
+        divide (SPEC data file text) buffer into sections
+        
+        internal: A *block* starts with either #F | #E | #S
+        
+        RETURNS
+        
+        [block]
+            list of blocks where each block is one or more lines of 
+            text with one of the above control lines at its start 
+        
+        """
+        buf = self._read_file_(self.fileName)
+        
+        sections, block = [], []
+        
+        for _line_num, text in enumerate(buf.splitlines()):
+            if len(text.strip()) > 0:
+                f = text.split()[0]
+                if len(f) == 2 and f in ("#E", "#F", "#S"):
+                    if len(block) > 0:
+                        sections.append("\n".join(block))
+                    block = []
+            block.append(text)
+
+        if len(block) > 0:
+            sections.append("\n".join(block))
+        return sections
+
+    def read(self):
+        """Reads and parses a spec data file"""
+        sections = self.dissect_file()
+        for block in sections:
+            if len(block) == 0:
+                continue
+            key = self.plugin_manager.getKey(block.splitlines()[0])
+            self.plugin_manager.process(key, block, self)
+            
+            if key == "#S":
+                scan = list(self.scans.values())[-1]
+                for line in scan.raw.splitlines()[1:]:
+                    if len(line) > 0:
+                        key = line.split()[0]
+                        if key in ("#D",):
+                            self.plugin_manager.process(key, line, scan)
+                            break
+        
+        # fix any missing parts
+        if not hasattr(self, "specFile"):
+            self.specFile = self.fileName
     
     def getScan(self, scan_number=0):
-        '''return the scan number indicated, None if not found'''
+        """return the scan number indicated, None if not found"""
         if int(float(scan_number)) < 1:
-            # relative list index (integer only), convert to actual scan number
-            keylist = sorted(self.getScanNumbers())
-            key = len(keylist) + int(scan_number)
-            if 0 <= key < len(keylist):
-                scan_number = keylist[key]
-            else:
-                return None
+            # relative scan referrence
+            scanlist = self.getScanNumbers()
+            scan_number = list(scanlist)[int(scan_number)]
         scan_number = str(scan_number)
         if scan_number in self.scans:
             return self.scans[scan_number]
         return None
     
     def getScanNumbers(self):
-        '''return a list of all scan numbers sorted by scan number'''
-        return sorted(self.scans.keys(), key=int)
+        """return a list of all scan numbers sorted by scan number"""
+        keys = self.scans.keys()
+        try:
+            r = sorted(keys, key=int)
+        except ValueError as _exc:
+            r = sorted(keys, key=float)
+        return r
     
     def getScanNumbersChronological(self):
-        '''return a list of all scan numbers sorted by date'''
+        """return a list of all scan numbers sorted by date"""
         def byDate_key(scan):
             return time.strptime(scan.date)
         scans = sorted(self.scans.values(), key=byDate_key)
         return [_.scanNum for _ in scans]
     
     def getMinScanNumber(self):
-        '''return the lowest numbered scan'''
+        """return the lowest numbered scan"""
         return self.getScanNumbers()[0]
     
     def getMaxScanNumber(self):
-        '''return the highest numbered scan'''
+        """return the highest numbered scan"""
         return self.getScanNumbers()[-1]
     
     def getFirstScanNumber(self):
-        '''return the first scan'''
+        """return the first scan"""
         return self.getScanNumbersChronological()[0]
     
     def getLastScanNumber(self):
-        '''return the last scan'''
+        """return the last scan"""
         return self.getScanNumbersChronological()[-1]
     
     def getScanCommands(self, scan_list=None):
-        '''return all the scan commands as a list, with scan number'''
+        """return all the scan commands as a list, with scan number"""
         if scan_list is None:
             scan_list = self.getScanNumbers()
         commands = []
@@ -337,7 +361,7 @@ class SpecDataFile(object):
 
 
 class SpecDataFileHeader(object):
-    """contents of a spec data file header (#F) section"""
+    """contents of a spec data file header (#E) section"""
 
     def __init__(self, buf, parent = None):
         #----------- initialize the instance variables
@@ -378,36 +402,39 @@ class SpecDataFileHeader(object):
             func(self)
     
     def addPostProcessor(self, label, func):
-        '''
+        """
         add a function to be processed after interpreting all lines from a header
         
         :param str label: unique label by which this postprocessor will be known
         :param obj func: function reference of postprocessor
         
         The postprocessors will be called at the end of header interpretation.
-        '''
+        """
         if label not in self.postprocessors:
             self.postprocessors[label] = func
     
     def addH5writer(self, label, func):
-        '''
+        """
         add a function to be processed when writing the scan header
         
         :param str label: unique label by which this writer will be known
         :param obj func: function reference of writer
         
         The writers will be called when the HDF5 file is to be written.
-        '''
+        """
         if label not in self.h5writers:
             self.h5writers[label] = func
+    
+    def getLatestScan(self):
+        return list(self.parent.scans.values())[-1]
 
 
 #-------------------------------------------------------------------------------------------
 
 LAZY_INTERPRET_SCAN_DATA_ATTRIBUTES = [
-    'comments', 'data', 'data_lines', 'date', 'G', 'I',
-    'L', 'M', 'positioner', 'N', 'P', 'Q', 'T',
-    'column_first', 'column_last'
+    'comments', 'data', 'data_lines', 'G', 'I',
+    'L', 'M', 'positioner', 'N', 'P', 'Q', 'T', 'U',
+    'column_first', 'column_last',
 ]
 
 
@@ -435,7 +462,10 @@ class SpecDataFileScan(object):
         self._interpreter_comments_ = []
         if parent is not None:
             # avoid changing the interface for clients
-            self.specFile = parent.fileName
+            if isinstance(parent, SpecDataFile):
+                self.specFile = parent.fileName
+            elif isinstance(parent, SpecDataFileHeader):
+                self.specFile = parent.parent.fileName
         elif self.header is not None:
             if self.header.parent is not None:
                 self.specFile = self.header.parent.fileName
@@ -464,9 +494,9 @@ class SpecDataFileScan(object):
         return object.__getattribute__(self, attr)
     
     def get_macro_name(self):
-        '''
+        """
         name of the SPEC macro used for this scan
-        '''
+        """
         return self.scanCmd.split()[0]
 
     def interpret(self):
@@ -498,42 +528,42 @@ class SpecDataFileScan(object):
         self.__interpreted__ = True
     
     def add_interpreter_comment(self, comment):
-        '''
+        """
         allow the interpreter to communicate information to the caller
         
         see issue #66: https://github.com/prjemian/spec2nexus/issues/66
-        '''
+        """
         self._interpreter_comments_.append(comment)
     
     def get_interpreter_comments(self):
-        '''
+        """
         return the list of comments
         
         see issue #66: https://github.com/prjemian/spec2nexus/issues/66
-        '''
+        """
         return self._interpreter_comments_
 
     def addPostProcessor(self, label, func):
-        '''
+        """
         add a function to be processed after interpreting all lines from a scan
         
         :param str label: unique label by which this postprocessor will be known
         :param obj func: function reference of postprocessor
         
         The postprocessors will be called at the end of scan data interpretation.
-        '''
+        """
         if label not in self.postprocessors:
             self.postprocessors[label] = func
     
     def addH5writer(self, label, func):
-        '''
+        """
         add a function to be processed when writing the scan data
         
         :param str label: unique label by which this writer will be known
         :param obj func: function reference of writer
         
         The writers will be called when the HDF5 file is to be written.
-        '''
+        """
         if label not in self.h5writers:
             self.h5writers[label] = func
     
@@ -545,7 +575,7 @@ class SpecDataFileScan(object):
         return buf
 
     def _unique_key(self, label, keylist):
-        '''ensure that label is not yet existing in keylist'''
+        """ensure that label is not yet existing in keylist"""
         i = 0
         key = label
         while key in keylist:

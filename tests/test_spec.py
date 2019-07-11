@@ -5,7 +5,7 @@ unit tests for the spec module
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
@@ -101,23 +101,24 @@ class Test(unittest.TestCase):
         cmd = 'ascan  th 19.022 19.222  60 -20000'
         self.assertEqual(scan.scanCmd, cmd)
         self.assertEqual(sfile.getScanCommands([1,]), ['#S 1 '+cmd,])
-#         x = 'theta'
-#         y = 'signal'
-#         self.assertEqual(scan.column_first, x)
-#         self.assertEqual(scan.column_last, y)
-#         self.assertEqual(len(scan.data[x]), 61)
-#         self.assertEqual(scan.data[x][0], 19.022)
-#         self.assertEqual(scan.data[y][0], 0.0)
-#         self.assertEqual(scan.data[x][-1], 19.222)
-#         self.assertEqual(scan.data[y][-1], 0.0)
-#         scan = sfile.getScan(-1)
-#         self.assertEqual(len(scan.positioner), 22)
-#         x = 'yt3'
-#         y = 'zt1'
-#         self.assertEqual(scan.positioner.keys()[0], x)
-#         self.assertEqual(scan.positioner.keys()[-1], y)
-#         self.assertEqual(scan.positioner[x], 0.499275)
-#         self.assertEqual(scan.positioner[y], -113.52071)
+        x = 'theta'
+        y = 'signal'
+        self.assertEqual(scan.column_first, x)
+        self.assertEqual(scan.column_last, y)
+        self.assertEqual(len(scan.data[x]), 61)
+        self.assertEqual(scan.data[x][0], 19.022)
+        self.assertEqual(scan.data[y][0], 0.0)
+        self.assertEqual(scan.data[x][-1], 19.222)
+        self.assertEqual(scan.data[y][-1], 0.0)
+        scan = sfile.getScan(-1)
+        self.assertEqual(len(scan.positioner), 22)
+        x = '2-theta'
+        y = 'm22'
+        keys = list(scan.positioner.keys())
+        self.assertEqual(keys[0], x)
+        self.assertEqual(keys[-1], y)
+        self.assertEqual(scan.positioner[x], 67.78225)
+        self.assertEqual(scan.positioner[y], 1230.0415)
         # TODO: apply file-specific tests (see README.txt)
         # test hklscan (#14), hklmesh (#17)
 
@@ -144,14 +145,13 @@ class Test(unittest.TestCase):
         self.assertEqual(scan.data['I0'][0], 1224.0)
         self.assertEqual(scan.data['eta'][-1], 44.0325)
         self.assertEqual(scan.data['I0'][-1], 1222.0)
-        scan = sfile.getScan(-1) 
+        scan = sfile.getScan(-1)
+        self.assertEqual(scan.scanNum, str(106))
         self.assertEqual(len(scan.positioner), 27)
-        x = 'a2Theta'
-        y = 'slitmb'
-        self.assertEqual(scan.positioner.keys()[0], x)
-        self.assertEqual(scan.positioner.keys()[-1], y)
-        self.assertEqual(scan.positioner[x], 0.0)
-        self.assertEqual(scan.positioner[y], 2.4003)
+        self.assertEqual(scan.column_first, 'Energy')
+        self.assertEqual(scan.column_last, 'I0')
+        self.assertEqual(scan.positioner["DCM theta"], 12.747328)
+        self.assertEqual(scan.positioner["ana.theta"], -0.53981253)
         # TODO: test MCA data (#1 but MCA data is all zero, need better test file)
         # test mesh (#22), Escan (#105)
 
@@ -180,13 +180,12 @@ class Test(unittest.TestCase):
         self.assertEqual(scan.data[x][-1], 15.6052)
         self.assertEqual(scan.data[y][-1], 255.0)
         scan = sfile.getScan(-1)
+        self.assertEqual(scan.scanNum, str(20))
         self.assertEqual(len(scan.positioner), 47)
-        x = 'a1t'
-        y = 'mx'
-        self.assertEqual(scan.positioner.keys()[0], x)
-        self.assertEqual(scan.positioner.keys()[-1], y)
-        self.assertEqual(scan.positioner[x], 3.03)
-        self.assertEqual(scan.positioner[y], 24.0)
+        self.assertEqual(scan.column_first, "ar")
+        self.assertEqual(scan.column_last, "USAXS_PD")
+        self.assertEqual(scan.positioner["sa"], -8.67896)
+        self.assertEqual(scan.positioner["sx_fine"], -14.4125)
         # TODO: apply file-specific tests (see README.txt)
         # uascan (#5), UNICAT metadata (#5)
 
@@ -214,13 +213,12 @@ class Test(unittest.TestCase):
         self.assertEqual(scan.data[x][-1], 4.4971428)
         self.assertEqual(scan.data[y][-1], 1.0)
         scan = sfile.getScan(-1)
-        self.assertEqual(len(scan.positioner), 136)
-        x = 'focus'
-        y = 'bslhc'
-        self.assertEqual(scan.positioner.keys()[0], x)
-        self.assertEqual(scan.positioner.keys()[-1], y)
-        self.assertEqual(scan.positioner[x], -2.83)
-        self.assertEqual(scan.positioner[y], 0.6)
+        self.assertEqual(scan.scanNum, str(102))
+        self.assertEqual(len(scan.positioner), 138)
+        self.assertEqual(scan.column_first, "HerixE")
+        self.assertEqual(scan.column_last, "Seconds")
+        self.assertEqual(scan.positioner["cam-x"], 2.06)
+        self.assertEqual(scan.positioner["rbs_xy"], -4.4398827)
         # TODO: apply file-specific tests (see README.txt)
         # 1-D scans (ascan), problem with scan abort on lines 5918-9, in scan 92
 
@@ -248,13 +246,12 @@ class Test(unittest.TestCase):
         self.assertEqual(scan.data[x][-1], -0.60300003)
         self.assertEqual(scan.data[y][-1], 11.0)
         scan = sfile.getScan(-1)
-        self.assertEqual(len(scan.positioner), 12)
-        x = 'Wheel'
-        y = 'dslit'
-        self.assertEqual(scan.positioner.keys()[0], x)
-        self.assertEqual(scan.positioner.keys()[-1], y)
-        self.assertEqual(scan.positioner[x], -2.05)
-        self.assertEqual(scan.positioner[y], 0.0)
+        self.assertEqual(scan.scanNum, str(271))
+        self.assertEqual(len(scan.positioner), 17)
+        self.assertEqual(scan.column_first, "phi")
+        self.assertEqual(scan.column_last, "NaI")
+        self.assertEqual(scan.positioner["chi"], 90.000004)
+        self.assertEqual(scan.positioner["Two Theta"], 0.15500001)
         # TODO: apply file-specific tests (see README.txt)
         # two #E lines, has two header sections
         # number of scans != maxScanNumber, something missing?
@@ -273,23 +270,25 @@ class Test(unittest.TestCase):
         cmd = 'ascan  th 26.7108 27.1107  60 0.05'
         self.assertEqual(scan.scanCmd, cmd)
         self.assertEqual(sfile.getScanCommands([1,]), ['#S 1 '+cmd,])
-#         x = 'theta'
-#         y = 'imroi1'
-#         self.assertEqual(scan.column_first, x)
-#         self.assertEqual(scan.column_last, y)
-#         self.assertEqual(len(scan.data[x]), 60)
-#         self.assertEqual(scan.data[x][0], 26.714)
-#         self.assertEqual(scan.data[y][0], 6.0)
-#         self.assertEqual(scan.data[x][-1], 27.1075)
-#         self.assertEqual(scan.data[y][-1], 7.0)
-#         scan = sfile.getScan(-1)
-#         self.assertEqual(len(scan.positioner), 26)
-#         x = 'yt2'
-#         y = 'wst'
-#         self.assertEqual(scan.positioner.keys()[0], x)
-#         self.assertEqual(scan.positioner.keys()[-1], y)
-#         self.assertEqual(scan.positioner[x], -6.25e-05)
-#         self.assertEqual(scan.positioner[y], 2.9999031)
+        x = 'theta'
+        y = 'imroi1'
+        self.assertEqual(scan.column_first, x)
+        self.assertEqual(scan.column_last, y)
+        self.assertEqual(len(scan.data[x]), 60)
+        self.assertEqual(scan.data[x][0], 26.714)
+        self.assertEqual(scan.data[y][0], 6.0)
+        self.assertEqual(scan.data[x][-1], 27.1075)
+        self.assertEqual(scan.data[y][-1], 7.0)
+        scan = sfile.getScan(-1)
+        self.assertEqual(scan.scanCmd, "ascan  phi -180 180  720 0.5")
+        self.assertEqual(len(scan.positioner), 26)
+        x = '2-theta'
+        y = 'chSens'
+        keys = list(scan.positioner.keys())
+        self.assertEqual(keys[0], x)
+        self.assertEqual(keys[-1], y)
+        self.assertEqual(scan.positioner[x], 18.8)
+        self.assertEqual(scan.positioner[y], 5.0)
         # TODO: apply file-specific tests (see README.txt)
         # 1-D scans, text in #V35.2 metadata (powderMotor="theta" others are float), also has #UIM control lines
 

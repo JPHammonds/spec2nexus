@@ -4,7 +4,7 @@
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
@@ -12,14 +12,13 @@
 #-----------------------------------------------------------------------------
 
 
-'''(internal library) Parses SPEC data using spec2nexus.eznx API (only requires h5py)'''
+"""(internal library) Parses SPEC data using spec2nexus.eznx API (only requires h5py)"""
 
 
 import h5py
 import numpy as np
 
 import spec2nexus.eznx as eznx
-import spec2nexus
 import spec2nexus.spec as spec
 import spec2nexus.utils as utils
  
@@ -35,17 +34,18 @@ CONTAINER_CLASS = 'NXnote'         # any additional freeform information not cov
 
 
 class Writer(object):
-    '''
+    
+    """
     writes out scans from SPEC data file to NeXus HDF5 file
     
     :param obj spec_data: instance of :class:`~spec2nexus.spec.SpecDataFile`
-    '''
+    """
 
     def __init__(self, spec_data):
         self.spec = spec_data
         
-    def save(self, hdf_file, scan_list=[]):
-        '''
+    def save(self, hdf_file, scan_list=None):
+        """
         save the information in this SPEC data file to a NeXus HDF5 file
         
         Each scan in scan_list will be converted to a **NXentry** group.  
@@ -75,45 +75,52 @@ class Writer(object):
         
         :param str hdf_file: name of NeXus/HDF5 file to be written
         :param [int] scanlist: list of scan numbers to be read
-        '''
+        """
+        scan_list = scan_list or []
         root = eznx.makeFile(hdf_file, **self.root_attributes())
         pick_first_entry = True
         for key in scan_list:
             nxentry = eznx.makeGroup(root, 'S'+str(key), 'NXentry')
-            eznx.makeDataset(nxentry, 
-                             'definition', 
-                             'NXspecdata', 
-                             description='NeXus application definition (status pending)')
+            eznx.makeDataset(
+                nxentry, 
+                'definition', 
+                'NXspecdata', 
+                description='NeXus application definition (status pending)')
             self.save_scan(nxentry, self.spec.getScan(key))
             if pick_first_entry:
                 pick_first_entry = False
                 eznx.addAttributes(root, default='S'+str(key))
             if 'data' not in nxentry:
                 # NXentry MUST have a NXdata group with data for default plot
-                nxdata = eznx.makeGroup(nxentry, 
-                                        'data', 
-                                        'NXdata',
-                                        signal='no_y_data',
-                                        axes='no_x_data',
-                                        no_x_data_indices=[0,],
-                                        )
-                eznx.makeDataset(nxdata, 
-                                 "no_x_data", 
-                                 (0, 1), 
-                                 units='none',
-                                 long_name='no data points in this scan')
-                eznx.makeDataset(nxdata, 
-                                 "no_y_data", 
-                                 (0, 1), 
-                                 units='none',
-                                 long_name='no data points in this scan')
+                nxdata = eznx.makeGroup(
+                    nxentry, 
+                    'data', 
+                    'NXdata',
+                    signal='no_y_data',
+                    axes='no_x_data',
+                    no_x_data_indices=[0,],
+                    )
+                eznx.makeDataset(
+                    nxdata, 
+                    "no_x_data", 
+                    (0, 1), 
+                    units='none',
+                    long_name='no data points in this scan')
+                eznx.makeDataset(
+                    nxdata, 
+                    "no_y_data", 
+                    (0, 1), 
+                    units='none',
+                    long_name='no data points in this scan')
         root.close()    # be CERTAIN to close the file
     
     def root_attributes(self):
-        '''*internal*: returns the attributes to be written to the root element as a dict'''
+        """*internal*: returns the attributes to be written to the root element as a dict"""
+        from spec2nexus._version import get_versions
+        version = get_versions()['version']
         header0 = self.spec.headers[0]
         dd = dict(
-            spec2nexus_version = spec2nexus.__version__,
+            spec2nexus_version = version,
             SPEC_file = self.spec.specFile,
             SPEC_epoch = header0.epoch,
             SPEC_date = utils.iso8601(header0.date),
@@ -127,12 +134,12 @@ class Writer(object):
             c = header0.comments[0]
             user = c[c.find('User = '):].split('=')[1].strip()
             dd['SPEC_user'] = user
-        except:
+        except Exception:
             pass
         return dd
     
     def save_scan(self, nxentry, scan):
-        '''*internal*: save the data from each SPEC scan to its own NXentry group'''
+        """*internal*: save the data from each SPEC scan to its own NXentry group"""
         scan.interpret()        # ensure interpretation is complete
         eznx.addAttributes(nxentry, default="data")
         eznx.write_dataset(nxentry, "title", str(scan))
@@ -146,25 +153,30 @@ class Writer(object):
             func(nxentry, self, scan, nxclass=CONTAINER_CLASS)
 
     def save_dict(self, group, data):
-        '''*internal*: store a dictionary'''
+        """*internal*: store a dictionary"""
         for k, v in data.items():
             self.write_ds(group, k, v)
 
     def save_data(self, nxdata, scan):
-        '''*internal*: store the scan data'''
+        """*internal*: store the scan data"""
         scan_type = scan.scanCmd.split()[0]
 
-        signal, axes = '', ['',]
         if scan_type in ('mesh', 'hklmesh'):
             # hklmesh  H 1.9 2.1 100  K 1.9 2.1 100  -800000
             signal, axes = self.mesh(nxdata, scan)
         elif scan_type in ('hscan', 'kscan', 'lscan', 'hklscan'):
             # hklscan  1.00133 1.00133  1.00133 1.00133  2.85 3.05  200 -400000
-            h_0, h_N, k_0, k_N, l_0, l_N = scan.scanCmd.split()[1:7]
-            if   h_0 != h_N: axes = ['H',]
-            elif k_0 != k_N: axes = ['K',]
-            elif l_0 != l_N: axes = ['L',]
-            signal, axes = self.oneD(nxdata, scan)
+            # FIXME:
+            # h_0, h_N, k_0, k_N, l_0, l_N = scan.scanCmd.split()[1:7]
+            # TODO: why bother defining axes here?  Not used.  issue #155
+            # if h_0 != h_N: 
+            #     axes = ['H',]
+            # elif k_0 != k_N: 
+            #     axes = ['K',]
+            # elif l_0 != l_N: 
+            #     axes = ['L',]
+            # FIXME: signal, axes = self.oneD(nxdata, scan)
+            raise NotImplementedError("hklscan save_data() not yet implemented")
         else:
             signal, axes = self.oneD(nxdata, scan)
 
@@ -189,7 +201,7 @@ class Writer(object):
                 eznx.addAttributes(nxdata, **{axis_name+'_indices': indices})
     
     def oneD(self, nxdata, scan):
-        '''*internal*: generic data parser for 1-D column data, returns signal and axis'''
+        """*internal*: generic data parser for 1-D column data, returns signal and axis"""
         for column in scan.L:
             self.write_ds(nxdata, column, scan.data[column])
 
@@ -199,7 +211,7 @@ class Writer(object):
         return signal, axis
     
     def mca_spectra(self, nxdata, scan, primary_axis_label):
-        '''*internal*: parse for optional 2-D MCA spectra'''
+        """*internal*: parse for optional 2-D MCA spectra"""
         if spec.MCA_DATA_KEY in scan.data:
             # calibration for all spectra
             a, b, c = 0, 0, 0
@@ -226,9 +238,10 @@ class Writer(object):
                 channels = np.arange(1, len(spectrum[0])+1, dtype=int)
                 _mca_x_ = a + channels * (b + channels * c)
                 self.write_ds(nxdata, ds_name + 'channel_', channels, units = 'channel')
+                self.write_ds(nxdata, ds_name + 'channel_scaled_x', _mca_x_, units = '')
     
     def mesh(self, nxdata, scan):
-        '''*internal*: data parser for 2-D mesh and hklmesh'''
+        """*internal*: data parser for 2-D mesh and hklmesh"""
         # TODO: refactor to use NeXus data model: signal, axes, data
         
         # 2-D parser: http://www.certif.com/spec_help/mesh.html
@@ -237,7 +250,6 @@ class Writer(object):
         #  hklmesh Q1 start1 end1 intervals1 Q2 start2 end2 intervals2 time
         # mesh:    data/33id_spec.dat  scan 22
         # hklmesh: data/33bm_spec.dat  scan 17
-        signal, axes = '', ['',]
         
         label1, start1, end1, intervals1, label2, start2, end2, intervals2, time = scan.scanCmd.split()[1:]
         if label1 not in scan.data:
@@ -247,7 +259,7 @@ class Writer(object):
         axis1 = scan.data.get(label1)
         axis2 = scan.data.get(label2)
         intervals1, intervals2 = map(int, (intervals1, intervals2))
-        start1, end1, start2, end2, time = map(float, (start1, end1, start2, end2, time))
+        # unused: start1, end1, start2, end2, time = map(float, (start1, end1, start2, end2, time))
         if len(axis1) < intervals1:     # stopped scan before second row started
             signal, axes = self.oneD(nxdata, scan)        # fallback support
         else:
@@ -293,6 +305,6 @@ class Writer(object):
         return signal, axes
     
     def write_ds(self, group, label, data, **attr):
-        '''*internal*: writes a dataset to the HDF5 file, records the SPEC name as an attribute'''
+        """*internal*: writes a dataset to the HDF5 file, records the SPEC name as an attribute"""
         clean_name = utils.clean_name(label)
         eznx.write_dataset(group, clean_name, data, spec_name=label, **attr)

@@ -6,7 +6,7 @@ test punx tests/common module (supports unit testing)
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
@@ -77,6 +77,9 @@ class Issue64(unittest.TestCase):
             sys.argv.append(_)
         with tests.common.Capture_stdout() as printed_lines:
             spec2nexus.extractSpecScan.main()
+        if len(printed_lines) != 5:
+            print(args)
+            print("\n".join(printed_lines))
         self.assertEqual(len(printed_lines), 5, 'extractSpecScan')
 
         outfile = printed_lines[2][len('wrote: '):]

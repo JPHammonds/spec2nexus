@@ -7,6 +7,97 @@ Change History
 Production
 **********
 
+:2020.0.2: expected *2019.07.09*, bug fixes and code review suggestions
+
+    * `#164 <https://github.com/prjemian/spec2nexus/issues/164>`_
+       post conda packages to `aps-anl-tag` channel
+    * `#161 <https://github.com/prjemian/spec2nexus/issues/161>`_
+       read files with no #E control line
+    * `#156 <https://github.com/prjemian/spec2nexus/issues/156>`_
+       LGTM code review
+    * `#153 <https://github.com/prjemian/spec2nexus/issues/153>`_
+       LGTM code review
+
+:2020.0.0: *2019.05.16*, major release
+
+    * `#145 <https://github.com/prjemian/spec2nexus/issues/145>`_
+       unit tests for header content
+    * `#144 <https://github.com/prjemian/spec2nexus/issues/144>`_
+       eznx `makeDataset()` now recognizes if data is `ndarray`
+    * `#123 <https://github.com/prjemian/spec2nexus/issues/123>`_
+       Accept data files with no header control lines (#F #E #D #C sequence)
+    * `#113 <https://github.com/prjemian/spec2nexus/issues/113>`_
+       unit tests for eznx
+    * `#70 <https://github.com/prjemian/spec2nexus/issues/70>`_
+       remove h5toText, find this now in `punx` package
+
+:2019.0503.0: 2019.05.03, tag
+
+    * `#142 <https://github.com/prjemian/spec2nexus/issues/142>`_
+       DuplicateSpecScanNumber with multiple #F sections
+    * `#137 <https://github.com/prjemian/spec2nexus/issues/137>`_
+       (again) bug in #U control line handling
+
+:2019.0501.0: 2019.05.01, tag
+
+    * `#137 <https://github.com/prjemian/spec2nexus/issues/137>`_
+       bug in #U control line handling
+    * `#140 <https://github.com/prjemian/spec2nexus/issues/140>`_
+       change: #U data goes into `<object>.U` list (name changed from `UserReserved`)
+
+:2.1.0: 2019.04.26, release
+
+    * `#135 <https://github.com/prjemian/spec2nexus/issues/135>`_
+       switch to semantic versioning 
+    * `#133 <https://github.com/prjemian/spec2nexus/issues/133>`_
+       support user control line "#U " with plugin
+    * `#131 <https://github.com/prjemian/spec2nexus/issues/131>`_
+       support #MD control lines from apstools.SpecWriterCallback
+    * `#125 <https://github.com/prjemian/spec2nexus/issues/125>`_
+       fluorescence spectra in files for RSM3D
+    * `#120 <https://github.com/prjemian/spec2nexus/issues/120>`_
+       do not mock `six` package in documentation
+    * `#119 <https://github.com/prjemian/spec2nexus/issues/119>`_
+       delimiters in #H/#V lines with or without text values
+    * `#116 <https://github.com/prjemian/spec2nexus/issues/116>`_
+       process data from spock
+
+	see [release notes](https://github.com/prjemian/spec2nexus/wiki/releasenotes__2-1-0)
+
+	It takes a couple steps to upgrade an existing conda installation from version 2017.nnnn to newer version 2.1.0
+
+	- add a declaration of `spec2nexus < 2000` in the `conda-meta/pinned` file in the conda environment
+	- `conda update -c prjemian spec2nexus` (should change to 2.1.0)
+
+	It may still be necessary to uninstall and reinstall spec2nexus to effect an update:
+
+		conda uninstall -y spec2nexus
+		conda install -c prjemian spec2nexus
+
+:2019.0422.0: (tag only)
+
+    * tag as-is, for issue #131
+
+:2019.0321.0: (tag only)
+
+    * tag as-is, post conda noarch package and post to pypi
+
+:2017.901.4:
+
+    * `#62 <https://github.com/prjemian/spec2nexus/issues/62>`_
+       support Python3
+    * `#112 <https://github.com/prjemian/spec2nexus/issues/112>`_
+       merge py3-62 branch
+    * `#111 <https://github.com/prjemian/spec2nexus/issues/111>`_
+       Change raise statements to use parens around arguments. Affects issue #62
+    * `#114 <https://github.com/prjemian/spec2nexus/issues/114>`_
+       travis-ci for python 3.5 & 3.6
+    * `#107 <https://github.com/prjemian/spec2nexus/issues/107>`_
+       Problems accessing SpecDataFileScan.data
+    * `#95 <https://github.com/prjemian/spec2nexus/issues/95>`_
+       document final release steps
+
+
 :2017.711.0:
 
     * `#110 <https://github.com/prjemian/spec2nexus/issues/110>`_

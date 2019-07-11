@@ -4,28 +4,30 @@
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
 # The full license is in the file LICENSE.txt, distributed with this software.
 #-----------------------------------------------------------------------------
 
-'''
+"""
 SPEC data file standard control lines
 
 :see: SPEC manual, *Standard Data File Format*,
    http://www.certif.com/spec_manual/user_1_4_1.html
 
-'''
+"""
 
+from collections import OrderedDict
+import datetime
+import time
 
-import re
 from spec2nexus.eznx import write_dataset, makeGroup, openGroup
 from spec2nexus.plugin import ControlLineHandler
 from spec2nexus.scanf import scanf
 from spec2nexus.spec import SpecDataFileHeader, SpecDataFileScan, DuplicateSpecScanNumber, MCA_DATA_KEY
-from spec2nexus.utils import strip_first_word, iso8601
+from spec2nexus.utils import strip_first_word, iso8601, split_column_labels
 from spec2nexus.writer import CONTAINER_CLASS
 
 
@@ -34,7 +36,8 @@ from spec2nexus.writer import CONTAINER_CLASS
 # header block
 
 class SPEC_File(ControlLineHandler):
-    '''
+    
+    """
     **#F** -- original data file name (starts a file header block)
     
     Module :mod:`spec2nexus.spec` is responsible for handling this control line.
@@ -47,16 +50,20 @@ class SPEC_File(ControlLineHandler):
     HDF5/NeXus REPRESENTATION
     
     * file root-level attribute: **SPEC_file**
-    '''
+    """
 
     key = '#F'
     
     def process(self, text, spec_file_obj, *args, **kws):
-        spec_file_obj.specFile = strip_first_word(text)
+        if not hasattr(spec_file_obj, "specFile"):
+            spec_file_obj.specFile = None
+        if spec_file_obj.specFile in (None, ""):
+            spec_file_obj.specFile = strip_first_word(text)
 
 
 class SPEC_Epoch(ControlLineHandler):
-    '''
+    
+    """
     **#E** -- the UNIX epoch (seconds from 00:00 GMT 1/1/70)
     
     In SPEC data files, the ``#E`` control line indicates the 
@@ -69,20 +76,24 @@ class SPEC_Epoch(ControlLineHandler):
     HDF5/NeXus REPRESENTATION
     
     * file root-level attribute: **SPEC_epoch** *int*
-    '''
+    """
 
     key = '#E'
     
-    def process(self, buf, scan, *args, **kws):
-        header = SpecDataFileHeader(buf, parent=scan)
+    def process(self, buf, sdf_object, *args, **kws):
+        header = SpecDataFileHeader(buf, parent=sdf_object)
         line = buf.splitlines()[0].strip()
-        header.epoch = int(strip_first_word(line))
+        if line.find(".") > -1:
+            header.epoch = float(strip_first_word(line))
+        else:
+            header.epoch = int(strip_first_word(line))
+        sdf_object.headers.append(header)
         header.interpret()                  # parse the full header
-        scan.headers.append(header)
 
 
 class SPEC_Date(ControlLineHandler):
-    '''
+    
+    """
     **#D** -- date/time stamp
         
     IN-MEMORY REPRESENTATION
@@ -92,22 +103,40 @@ class SPEC_Date(ControlLineHandler):
     HDF5/NeXus REPRESENTATION
     
     * file root-level attribute: **SPEC_date** *str* (value for 1st header block is used)
-    '''
+    """
 
     key = '#D'
     
-    def process(self, text, scan, *args, **kws):
-        scan.date = strip_first_word(text)
-        if isinstance(scan, SpecDataFileScan):
-            scan.addH5writer(self.key, self.writer)
+    def process(self, text, sdf_object, *args, **kws):
+        text = strip_first_word(text)
+        # if isinstance(sdf_object, SpecDataFileScan):
+        #     sdf_object = sdf_object.header
+        sp = text.split(" ")
+        if len(sp) == 1:
+            sdf_object.epoch = int(float(text))
+            text = datetime.datetime.fromtimestamp(float(text))
+            text = text.strftime("%c")
+        sdf_object.date = text
+        if not hasattr(sdf_object, "epoch"):
+            # Mon Jul 08 13:35:50 2019
+            spec_fmt = '%a %b %d %H:%M:%S %Y'
+            ts = time.strptime(text, spec_fmt)
+            sdf_object.epoch = time.mktime(ts)
+        if isinstance(sdf_object, SpecDataFileScan):
+            sdf_object.addH5writer(self.key, self.writer)
+            if len(sdf_object.header.date.strip()) == 0:
+                sdf_object.header.date = text
+                sdf_object.header.epoch = sdf_object.epoch
+            # TODO: what if header date is greater than this scan's date?
     
-    def writer(self, h5parent, writer, scan, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
-        write_dataset(h5parent, "date", iso8601(scan.date)  )
+    def writer(self, h5parent, writer, sdf_object, *args, **kws):
+        """Describe how to store this data in an HDF5 NeXus file"""
+        write_dataset(h5parent, "date", iso8601(sdf_object.date)  )
 
 
 class SPEC_Comment(ControlLineHandler):
-    '''
+    
+    """
     **#C** -- any comment either in the scan header or somewhere in the scan
         
     IN-MEMORY REPRESENTATION
@@ -122,7 +151,7 @@ class SPEC_Comment(ControlLineHandler):
     * dataset named **comments** under */NXentry* group, such as */S1/comments* : 
       string array of all comments from this scan block
     
-    '''
+    """
 
     key = '#C'
     
@@ -135,8 +164,8 @@ class SPEC_Comment(ControlLineHandler):
             scan.addH5writer(self.key, self.writer)
     
     def writer(self, h5parent, writer, scan, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
-        write_dataset(h5parent, "comments", '\n'.join(map(str, scan.comments)))
+        """Describe how to store this data in an HDF5 NeXus file"""
+        write_dataset(h5parent, "comments", '\n'.join(list(map(str, scan.comments))))
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -144,7 +173,8 @@ class SPEC_Comment(ControlLineHandler):
 
 
 class SPEC_Scan(ControlLineHandler):
-    '''
+    
+    """
     **#S** -- SPEC scan
     
     In SPEC data files, the ``#S`` control line indicates the 
@@ -167,38 +197,47 @@ class SPEC_Scan(ControlLineHandler):
     * */NXentry* group named 'S%d` scan_number at root 
       level, such as */S1*
 
-    '''
+    """
 
     key = '#S'
     
-    def process(self, part, spec_obj, *args, **kws):
-        scan = SpecDataFileScan(spec_obj.headers[-1], part, parent=spec_obj)
-        text = part.splitlines()[0].strip()
-        scan.S = strip_first_word(text)
+    def process(self, part, sdf, *args, **kws):
+        if len(sdf.headers) == 0:
+            # make a header if none exists now
+            raw = ""        # TODO: what default content to use?
+            header = SpecDataFileHeader(raw, parent=sdf)
+            sdf.headers.append(header)
+        else:
+            header = sdf.headers[-1]    # pick the most recent header
+
+        scan = SpecDataFileScan(header, part, parent=sdf)
+        scan.S = strip_first_word(part.splitlines()[0].strip())
         scan.scanNum = scan.S.split()[0]
         scan.scanCmd = strip_first_word(scan.S)
-        if scan.scanNum in spec_obj.scans:
+        
+        if scan.scanNum in sdf.scans:
             # Before raising an exception, 
             #    Check for duplicate and create alternate name
-            #    write as "%d.%d" % (scan.scanNum, index) 
+            #    write as "%d.%d" % (scan.scanNum, index+1) 
             #    where index is the lowest integer in 
-            #    range(1,really big) that is not already in use.
-            # really_big < len(total number of scans in data file)
-            # Will a non-integer scanNum break anything?
-            for i in range(1, len(scan.parent.scans)):
-                new_scanNum = "%s.%d" % (scan.scanNum, i)
-                if new_scanNum not in spec_obj.scans:
+            #    range(really big) that is not already in use.
+            # really_big <= len(total number of scans in data file)
+            # Will a non-integer scanNum break anything?  [note: It *has* caused troubles.]
+            for i in range(len(scan.parent.scans)):
+                new_scanNum = "%s.%d" % (scan.scanNum, i+1)
+                if new_scanNum not in sdf.scans:
                     scan.scanNum = new_scanNum
                     break
         scan.scanNum = str(scan.scanNum)
-        if scan.scanNum in spec_obj.scans:
-            msg = str(scan.scanNum) + ' in ' + spec_obj.fileName
+        if scan.scanNum in sdf.scans:
+            msg = str(scan.scanNum) + ' in ' + sdf.fileName
             raise DuplicateSpecScanNumber(msg)
-        spec_obj.scans[scan.scanNum] = scan
+        sdf.scans[scan.scanNum] = scan
 
 
 class SPEC_Geometry(ControlLineHandler):
-    '''
+    
+    """
     **#G** -- diffractometer geometry (numbered rows: #G0, #G1, ...)
         
     IN-MEMORY REPRESENTATION
@@ -214,7 +253,7 @@ class SPEC_Geometry(ControlLineHandler):
         Meaning of contents for each index are defined by geometry-specific 
         SPEC diffractometer support.
 
-    '''
+    """
 
     key = '#G\d+'
     
@@ -225,19 +264,20 @@ class SPEC_Geometry(ControlLineHandler):
             scan.addH5writer(self.key, self.writer)
     
     def writer(self, h5parent, writer, scan, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         # e.g.: SPECD/four.mac
         # http://certif.com/spec_manual/fourc_4_9.html
         desc = "SPEC geometry arrays, meanings defined by SPEC diffractometer support"
         group = makeGroup(h5parent, 'G', nxclass, description=desc)
         dd = {}
         for item, value in scan.G.items():
-            dd[item] = map(float, value.split())
+            dd[item] = list(map(float, value.split()))
         writer.save_dict(group, dd)
 
 
 class SPEC_NormalizingFactor(ControlLineHandler):
-    '''
+    
+    """
     **#I** -- intensity normalizing factor
         
     IN-MEMORY REPRESENTATION
@@ -247,7 +287,7 @@ class SPEC_NormalizingFactor(ControlLineHandler):
     HDF5/NeXus REPRESENTATION
     
     * Dataset named **intensity_factor** in the *NXentry* group, such as */S1/intensity_factor*
-    '''
+    """
 
     key = '#I'
 
@@ -255,13 +295,14 @@ class SPEC_NormalizingFactor(ControlLineHandler):
         scan.I = float(strip_first_word(text))
     
     def writer(self, h5parent, writer, scan, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         if hasattr(scan, 'I'):
             writer.write_dataset(h5parent, "intensity_factor", scan.I)
 
 
 class SPEC_CounterNames(ControlLineHandler):
-    '''
+    
+    """
     **#J** -- names of counters (each separated by two spaces) (new with SPEC v6)
     
     IN-MEMORY REPRESENTATION
@@ -274,7 +315,7 @@ class SPEC_CounterNames(ControlLineHandler):
       
       * datasets with names supplied as SPEC counter mnemonics, string values supplied as SPEC counter names
 
-    '''
+    """
 
     key = '#J\d+'
     
@@ -289,7 +330,7 @@ class SPEC_CounterNames(ControlLineHandler):
         header.addH5writer('counter cross-referencing', self.writer)
     
     def writer(self, h5parent, writer, header, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         if not hasattr(header, 'counter_xref'):
             header.counter_xref = {}          # mnemonic:name
         desc = 'cross-reference SPEC counter mnemonics and names'
@@ -303,7 +344,8 @@ class SPEC_CounterNames(ControlLineHandler):
 
 
 class SPEC_CounterMnemonics(ControlLineHandler):
-    '''
+    
+    """
     **#j** -- mnemonics of counter  (new with SPEC v6)
     
     IN-MEMORY REPRESENTATION
@@ -316,7 +358,7 @@ class SPEC_CounterMnemonics(ControlLineHandler):
       
       * datasets with names supplied as SPEC counter mnemonics, string values supplied as SPEC counter names
 
-    '''
+    """
 
     key = '#j\d+'
     
@@ -331,7 +373,7 @@ class SPEC_CounterMnemonics(ControlLineHandler):
         header.addH5writer('counter cross-referencing', self.writer)
     
     def writer(self, h5parent, writer, header, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         if not hasattr(header, 'counter_xref'):
             header.counter_xref = {}          # mnemonic:name
         desc = 'cross-reference SPEC counter mnemonics and names'
@@ -356,7 +398,8 @@ def counter_xref_postprocessing(header):
 
 
 class SPEC_Labels(ControlLineHandler):
-    '''
+    
+    """
     **#L** -- data column labels
     
     IN-MEMORY REPRESENTATION
@@ -370,13 +413,13 @@ class SPEC_Labels(ControlLineHandler):
       
       * datasets with names supplied in **L**, array values collected in **data_lines**
 
-    '''
+    """
 
     key = '#L'
     
     def process(self, text, scan, *args, **kws):
         # Some folks use more than two spaces!  Use regular expression(re) module
-        scan.L = re.split("  +", strip_first_word(text))
+        scan.L = split_column_labels(strip_first_word(text))
 
         if len(scan.L) == 1 and hasattr(scan, 'N') and scan.N[0] > 1:
             # BUT: some folks only use a single-space as a separator!
@@ -391,7 +434,8 @@ class SPEC_Labels(ControlLineHandler):
 
 
 class SPEC_Monitor(ControlLineHandler):
-    '''
+    
+    """
     **#M** -- counting against this constant monitor count (see #T)
         
     IN-MEMORY REPRESENTATION
@@ -404,7 +448,7 @@ class SPEC_Monitor(ControlLineHandler):
     * Dataset named **counting_basis** in the *NXentry* group with 
       value *SPEC scan with constant monitor count*, such as */S1/counting_basis*
 
-    '''
+    """
 
     key = '#M'
     
@@ -417,14 +461,15 @@ class SPEC_Monitor(ControlLineHandler):
         scan.addH5writer(self.key, self.writer)
     
     def writer(self, h5parent, writer, scan, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         desc = 'SPEC scan with constant monitor count'
         write_dataset(h5parent, "counting_basis", desc)
         write_dataset(h5parent, "M", float(scan.M), units='counts', description = desc)
 
 
 class SPEC_NumColumns(ControlLineHandler):
-    '''
+    
+    """
     **#N** -- number of columns of data [ num2 sets per row ]
     
     IN-MEMORY REPRESENTATION
@@ -434,17 +479,18 @@ class SPEC_NumColumns(ControlLineHandler):
     HDF5/NeXus REPRESENTATION
     
     * not written to file
-    '''
+    """
 
     key = '#N'
     # TODO: Needs an example data file to test (issue #8)
     
     def process(self, text, scan, *args, **kws):
-        scan.N = map(int, strip_first_word(text).split())
+        scan.N = list(map(int, strip_first_word(text).split()))
 
 
 class SPEC_PositionerNames(ControlLineHandler):
-    '''
+    
+    """
     **#O** -- positioner names (numbered rows: #O0, #O1, ...)
     
     IN-MEMORY REPRESENTATION
@@ -462,16 +508,22 @@ class SPEC_PositionerNames(ControlLineHandler):
       
       * datasets with names supplied as SPEC positioner mnemonics, string values supplied as SPEC positioner names
 
-    '''
+    """
 
     key = '#O\d+'
     
-    def process(self, text, header, *args, **kws):
-        header.O.append( strip_first_word(text).split() )
+    def process(self, text, sdf_object, *args, **kws):
+        if isinstance(sdf_object, SpecDataFileScan):
+            sdf_object = sdf_object.header
+        key = text.split()[0]
+        if key == "#O0":
+            sdf_object.O = []       # TODO: What if motor names are different?
+        sdf_object.O.append(split_column_labels(strip_first_word(text)))
 
 
 class SPEC_PositionerMnemonics(ControlLineHandler):
-    '''
+    
+    """
     **#o** -- positioner mnemonics (new with SPEC v6)
     
     IN-MEMORY REPRESENTATION
@@ -484,7 +536,7 @@ class SPEC_PositionerMnemonics(ControlLineHandler):
       
       * datasets with names supplied as SPEC positioner mnemonics, string values supplied as SPEC positioner names
 
-    '''
+    """
 
     key = '#o\d+'
     
@@ -499,7 +551,7 @@ class SPEC_PositionerMnemonics(ControlLineHandler):
         header.addH5writer('positioner cross-referencing', self.writer)
     
     def writer(self, h5parent, writer, header, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         if not hasattr(header, 'positioner_xref'):
             header.counter_xref = {}          # mnemonic:name
         desc = 'cross-reference SPEC positioner mnemonics and names'
@@ -524,7 +576,8 @@ def positioner_xref_postprocessing(header):
 
 
 class SPEC_Positioners(ControlLineHandler):
-    '''
+    
+    """
     **#P** -- positioner values at start of scan (numbered rows: #P0, #P1, ...)
     
     IN-MEMORY REPRESENTATION
@@ -538,21 +591,23 @@ class SPEC_Positioners(ControlLineHandler):
       
       * datasets created from dictionary <scan>.positioner
 
-    '''
+    """
 
     key = '#P\d+'
     
     def process(self, text, scan, *args, **kws):
+        if isinstance(scan, SpecDataFileHeader):
+            scan = scan.getLatestScan()
         scan.P.append( strip_first_word(text) )
         scan.addPostProcessor('motor_positions', self.postprocess)
     
     def postprocess(self, scan, *args, **kws):
-        '''
+        """
         interpret the motor positions from the scan header
         
         :param SpecDataFileScan scan: data from a single SPEC scan
-        '''
-        scan.positioner = {}
+        """
+        scan.positioner = OrderedDict()
         for row, values in enumerate(scan.P):
             if row >= len(scan.header.O):
                 scan.add_interpreter_comment('#P%d found without #O%d' % (row, row))
@@ -569,14 +624,15 @@ class SPEC_Positioners(ControlLineHandler):
             scan.addH5writer(self.key, self.writer)
     
     def writer(self, h5parent, writer, scan, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         desc='SPEC positioners (#P & #O lines)'
         group = makeGroup(h5parent, 'positioners', nxclass, description=desc)
         writer.save_dict(group, scan.positioner)
 
 
 class SPEC_HKL(ControlLineHandler):
-    '''
+    
+    """
     **#Q** -- :math:`Q` (:math:`hkl`) at start of scan
         
     IN-MEMORY REPRESENTATION
@@ -586,24 +642,25 @@ class SPEC_HKL(ControlLineHandler):
     HDF5/NeXus REPRESENTATION
     
     * Dataset named **Q** in the *NXentry* group, such as */S1/M*
-    '''
+    """
 
     key = '#Q'
     
     def process(self, text, scan, *args, **kws):
         s = strip_first_word(text)
         if len(s) > 0:
-            scan.Q = map(float, s.split())
+            scan.Q = list(map(float, s.split()))
             scan.addH5writer(self.key, self.writer)
     
     def writer(self, h5parent, writer, scan, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         desc = 'hkl at start of scan'
         write_dataset(h5parent, "Q", scan.Q, description = desc)
 
 
 class SPEC_CountTime(ControlLineHandler):
-    '''
+    
+    """
     **#T** -- counting against this constant number of seconds (see #M)
         
     IN-MEMORY REPRESENTATION
@@ -616,7 +673,7 @@ class SPEC_CountTime(ControlLineHandler):
     * Dataset named **counting_basis** in the *NXentry* group with 
       value *SPEC scan with constant counting time*, such as */S1/counting_basis*
 
-    '''
+    """
 
     key = '#T'
     
@@ -629,14 +686,56 @@ class SPEC_CountTime(ControlLineHandler):
         scan.addH5writer(self.key, self.writer)
     
     def writer(self, h5parent, writer, scan, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         desc = 'SPEC scan with constant counting time'
         write_dataset(h5parent, "counting_basis", desc)
         write_dataset(h5parent, "T", float(scan.T), units='s', description = desc)
 
 
+class SPEC_UserReserved(ControlLineHandler):
+    
+    """
+    **#U** -- Reserved for user
+        
+    IN-MEMORY REPRESENTATION
+    
+    * (SpecDataFileHeader): **U**, [*str*]
+    * (SpecDataFileScan): **U**, [*str*]
+    
+    HDF5/NeXus REPRESENTATION
+    
+    * Within a group named **UserReserved** in the *NXentry* group:
+      dataset(s) named **header_##** (from the SPEC data file header 
+      section) or **item_##** (from the SPEC data file scan section), 
+      such as */S1/UserReserved/header_1* and  */S1/UserReserved/item_5*
+    """
+
+    key = '#U'
+    
+    def process(self, text, sdf_object, *args, **kws):
+        text = strip_first_word(text)
+        if not hasattr(sdf_object, "U"):
+            sdf_object.U = []
+        sdf_object.U.append(text.strip())
+
+        sdf_object.addH5writer(self.key, self.writer)
+    
+    def writer(self, h5parent, writer, sdf_object, *args, **kws):
+        """Describe how to store this data in an HDF5 NeXus file"""
+        desc = 'SPEC control line "#U: Reserved for user"'
+        group = openGroup(h5parent, 'UserReserved', "NXnote", description=desc)
+        if isinstance(sdf_object, SpecDataFileHeader):
+            tag = "header"
+        else:
+            tag = "item"
+        for i, text in enumerate(sdf_object.U):
+            key = "%s_%d" % (tag, i+1)
+            write_dataset(group, key, text, description = "#U line %d" % (i+1))
+
+
 class SPEC_TemperatureSetPoint(ControlLineHandler):
-    '''
+    
+    """
     **#X** -- Temperature Set Point (desired temperature)
     
     The default declaration of the #X control line is written::
@@ -661,7 +760,7 @@ class SPEC_TemperatureSetPoint(ControlLineHandler):
     
     * Dataset named **TEMP_SP** in the *NXentry* group, such as */S1/TEMP_SP*
     * Dataset named **DEGC_SP** in the *NXentry* group, such as */S1/DEGC_SP*
-    '''
+    """
 
     key = '#X'
     
@@ -678,7 +777,7 @@ class SPEC_TemperatureSetPoint(ControlLineHandler):
                 scan.addH5writer(self.key, self.writer)
     
     def writer(self, h5parent, writer, scan, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         # consider putting this info under NXsample or NXentry/metadata
         if hasattr(scan, 'TEMP_SP'):
             write_dataset(h5parent, "TEMP_SP", scan.TEMP_SP, description='temperature set point')
@@ -687,7 +786,8 @@ class SPEC_TemperatureSetPoint(ControlLineHandler):
 
 
 class SPEC_DataLine(ControlLineHandler):
-    '''
+    
+    """
     **(scan data)** -- scan data line
     
     Scan data could include interspersed MCA data or
@@ -707,15 +807,15 @@ class SPEC_DataLine(ControlLineHandler):
       
       * datasets with names supplied in **L**, array values collected in **data_lines**
 
-    '''
+    """
 
     # key = r'[+-]?\d*\.?\d?'
     # use custom key match since regexp for floats is tedious!
     key = r'scan data'
     def match_key(self, text):
-        '''
+        """
         Easier to try conversion to number than construct complicated regexp
-        '''
+        """
         try:
             float( text.strip().split()[0] )
             return True
@@ -740,7 +840,8 @@ class SPEC_DataLine(ControlLineHandler):
 
 
 class SPEC_MCA(ControlLineHandler):
-    '''
+    
+    """
     **#@MCA** -- MCA data formatting declaration (ignored for now)
     
     declares this scan contains MCA data (SPEC's array_dump() format, such as ``"#@MCA 16C"``)
@@ -761,7 +862,7 @@ class SPEC_MCA(ControlLineHandler):
         "%%16" would do the same without any backslash
         "1" would dump 1 point per line, ...
 
-    '''
+    """
 
     key = '#@MCA'
     
@@ -772,7 +873,8 @@ class SPEC_MCA(ControlLineHandler):
 
 
 class SPEC_MCA_Array(ControlLineHandler):
-    '''
+    
+    """
     **@A** -- MCA Array data
     
     MCA data. Each value is the content of one channel, or an 
@@ -796,7 +898,7 @@ class SPEC_MCA_Array(ControlLineHandler):
           * if CALIB data specified: *float* scaled MCA channels -- :math:`x_k = a +bk + ck^2`
           * if CALIB data not specified: *int* MCA channel numbers
 
-    '''
+    """
 
     key = r'@A\d*'
     # continued lines will be matched by SPEC_DataLine
@@ -815,7 +917,8 @@ class SPEC_MCA_Array(ControlLineHandler):
 
 
 class SPEC_MCA_Calibration(ControlLineHandler):
-    '''
+    
+    """
     **#@CALIB** -- coefficients to compute a scale based on the MCA channel number
     
     :math:`x_k = a +bk + ck^2` for MCA data, :math:`k` is channel number
@@ -833,7 +936,7 @@ class SPEC_MCA_Calibration(ControlLineHandler):
       * Dataset **calib_b** : *float*
       * Dataset **calib_c** : *float*
 
-    '''
+    """
 
     # key = '#@CALIB'
     # accept upper or lower case variants
@@ -844,7 +947,7 @@ class SPEC_MCA_Calibration(ControlLineHandler):
         # #@CALIB a b c
         # #@Calib 0.0501959 0.0141105 0 mca1
         s = strip_first_word(text).split()
-        a, b, c = map(float, s[0:3])
+        a, b, c = list(map(float, s[0:3]))
         
         if not hasattr(scan, 'MCA'):
             scan.MCA = {}
@@ -857,7 +960,7 @@ class SPEC_MCA_Calibration(ControlLineHandler):
         scan.addH5writer(self.key, self.writer)
     
     def writer(self, h5parent, writer, scan, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         if hasattr(scan, 'MCA'):
             if 'CALIB' in scan.MCA:
                 mca_group = openGroup(h5parent, 'MCA', nxclass, description='MCA metadata')
@@ -868,7 +971,8 @@ class SPEC_MCA_Calibration(ControlLineHandler):
 
 
 class SPEC_MCA_ChannelInformation(ControlLineHandler):
-    '''
+    
+    """
     **#@CHANN** -- MCA channel information 
     
     number_saved, first_saved, last_saved, reduction_coef
@@ -886,14 +990,14 @@ class SPEC_MCA_ChannelInformation(ControlLineHandler):
       * Dataset **first_saved** : *int* last channel saved
       * Dataset **reduction_coef** : *float* reduction coefficient
 
-    '''
+    """
 
     key = '#@CHANN'
     
     def process(self, text, scan, *args, **kws):
         # #@CHANN 1201 1110 1200 1
         s = strip_first_word(text).split()
-        number_saved, first_saved, last_saved = map(int, s[0:3])
+        number_saved, first_saved, last_saved = list(map(int, s[0:3]))
         reduction_coef = float(s[-1])
 
         if not hasattr(scan, 'MCA'):
@@ -906,7 +1010,7 @@ class SPEC_MCA_ChannelInformation(ControlLineHandler):
         scan.addH5writer(self.key, self.writer)
     
     def writer(self, h5parent, writer, scan, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         if hasattr(scan, 'MCA'):
             mca_group = openGroup(h5parent, 'MCA', nxclass, description='MCA metadata')
             mca = scan.MCA
@@ -916,7 +1020,8 @@ class SPEC_MCA_ChannelInformation(ControlLineHandler):
 
 
 class SPEC_MCA_CountTime(ControlLineHandler):
-    '''
+    
+    """
     **#@CTIME** -- MCA count times
     
     preset_time, elapsed_live_time, elapsed_real_time
@@ -933,13 +1038,13 @@ class SPEC_MCA_CountTime(ControlLineHandler):
       * Dataset **elapsed_live_time** : *float*
       * Dataset **elapsed_real_time** : *float*
 
-    '''
+    """
 
     key = '#@CTIME'
     
     def process(self, text, scan, *args, **kws):
         s = strip_first_word(text).split()
-        preset_time, elapsed_live_time, elapsed_real_time = map(float, s)
+        preset_time, elapsed_live_time, elapsed_real_time = list(map(float, s))
 
         if not hasattr(scan, 'MCA'):
             scan.MCA = {}
@@ -950,7 +1055,7 @@ class SPEC_MCA_CountTime(ControlLineHandler):
         scan.addH5writer(self.key, self.writer)
     
     def writer(self, h5parent, writer, scan, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         if hasattr(scan, 'MCA'):
             mca_group = openGroup(h5parent, 'MCA', nxclass, description='MCA metadata')
             mca = scan.MCA
@@ -960,7 +1065,8 @@ class SPEC_MCA_CountTime(ControlLineHandler):
 
 
 class SPEC_MCA_RegionOfInterest(ControlLineHandler):
-    '''
+    
+    """
     **#@ROI** -- MCA ROI (Region Of Interest) channel information
     
     ROI_name, first_chan, last_chan
@@ -977,7 +1083,7 @@ class SPEC_MCA_RegionOfInterest(ControlLineHandler):
       
       * Dataset **{ROI_name}** : *int* [first_chan, last_chan]
 
-    '''
+    """
 
     key = '#@ROI'
     
@@ -1002,7 +1108,7 @@ class SPEC_MCA_RegionOfInterest(ControlLineHandler):
         scan.MCA['ROI'][ROI_name]['last_chan'] = last_chan
     
     def writer(self, h5parent, writer, scan, nxclass=None, *args, **kws):
-        '''Describe how to store this data in an HDF5 NeXus file'''
+        """Describe how to store this data in an HDF5 NeXus file"""
         if hasattr(scan, 'MCA'):
             if hasattr(scan.MCA, 'ROI'):
                 mca_group = openGroup(h5parent, 'MCA', nxclass, description='MCA metadata')
@@ -1016,11 +1122,11 @@ class SPEC_MCA_RegionOfInterest(ControlLineHandler):
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 def data_lines_postprocessing(scan):
-    '''
+    """
     interpret the data lines from the body of the scan
     
     :param SpecDataFileScan scan: data from a single SPEC scan
-    '''
+    """
     # first, get the column labels, rename redundant labels to be unique
     # the unique labels will be the scan.data dictionary keys
     scan.data = {}
@@ -1051,7 +1157,7 @@ def data_lines_postprocessing(scan):
             if key not in scan.data[MCA_DATA_KEY]:
                 scan.data[MCA_DATA_KEY][key] = []
             # accumulate this spectrum
-            mca_spectrum = map(float, parts[1:])
+            mca_spectrum = list(map(float, parts[1:]))
             scan.data[MCA_DATA_KEY][key].append(mca_spectrum)
         else:
             try:
@@ -1066,7 +1172,7 @@ def data_lines_postprocessing(scan):
 
 
 def data_lines_writer(h5parent, writer, scan, *args, **kws):
-    '''Describe how to store scan data in an HDF5 NeXus file'''
+    """Describe how to store scan data in an HDF5 NeXus file"""
     desc = 'SPEC scan data'
     nxdata = makeGroup(h5parent, 'data', 'NXdata', description=desc)
     writer.save_data(nxdata, scan)

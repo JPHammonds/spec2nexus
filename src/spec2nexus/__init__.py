@@ -1,23 +1,21 @@
 # -*- coding: iso-8859-1 -*-
 
-'''command-line tool to convert SPEC data files to NeXus HDF5'''
+"""command-line tool to convert SPEC data files to NeXus HDF5"""
 
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
 # The full license is in the file LICENSE.txt, distributed with this software.
 #-----------------------------------------------------------------------------
 
-import os
-
 
 __author__    = 'Pete R. Jemian'
 __email__     = 'prjemian@gmail.com'
-__copyright__ = '2014-2017, Pete R. Jemian'
+__copyright__ = '2014-2019, Pete R. Jemian'
 
 __package_name__ = 'spec2nexus'
 
@@ -27,10 +25,18 @@ __description__  = 'Converts SPEC data files and scans into NeXus HDF5 files'
 __author_name__  = __author__
 __author_email__ = __email__
 __url__          = u'http://spec2nexus.readthedocs.org'
-#__download_url__ = u'https://github.com/prjemian/spec2nexus/tarball/' + __version__
 __keywords__     = ['SPEC', 'diffraction', 'data acquisition', 'NeXus', 'HDF5', 'MatPlotLib']
 
-__install_requires__ = ('h5py','numpy', )
+__install_requires__ = ('h5py', 'numpy', 'six', 'matplotlib')
+__documentation_mocks__ = [
+    'h5py',    
+    'numpy', 
+    'numpy.ma',
+    'matplotlib', 
+    'matplotlib.backends', 
+    'matplotlib.backends.backend_agg',
+    # do NOT mock the "six" package!
+]
 __classifiers__ = [
      'Development Status :: 5 - Production/Stable',
      'Environment :: Console',
@@ -40,6 +46,10 @@ __classifiers__ = [
      'Programming Language :: Python',
      'Programming Language :: Python :: 2',
      'Programming Language :: Python :: 2.7',
+     'Programming Language :: Python :: 3',
+     'Programming Language :: Python :: 3.5',
+     'Programming Language :: Python :: 3.6',
+     'Programming Language :: Python :: 3.7',
      'Topic :: Scientific/Engineering',
      'Topic :: Scientific/Engineering :: Astronomy',
      'Topic :: Scientific/Engineering :: Bio-Informatics',

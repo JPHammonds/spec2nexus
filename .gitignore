@@ -1,10 +1,18 @@
 *.py[cod]
 
+# eclipse PyDev config
+.pydevproject
+
 # output from this program
 src/spec2nexus/data/*.hdf5
 
+# used when building release notes
+__github_creds__.txt
+release.txt
+
 # builds of conda recipes for distribution
 conda-packages
+build_log.txt
 
 # C extensions
 *.so

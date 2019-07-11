@@ -4,22 +4,22 @@
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
 # The full license is in the file LICENSE.txt, distributed with this software.
 #-----------------------------------------------------------------------------
 
-'''
+"""
 **#UIM** : Image header information from EPICS areaDetector
 
 :deprecated: in favor of UXML
-'''
+"""
 
 # TODO: for each ControlLineHandler, describe where data goes, both internally and in HDF5 file
 
-'''
+"""
 #UIM Image header information from areaDetector
 #UIM UIMR: ROI information, UIMC: image counter setup
 #UIM Center pixel: 206 85
@@ -39,12 +39,13 @@
 #UIMC8 imsca2 2 MaxValue
 #UIMC9 imsca3 3 MaxValue
 #UIMC10 imsca4 4 MaxValue
-'''
+"""
 
 from spec2nexus.plugin import ControlLineHandler
 
 class UIM_generic(ControlLineHandler):
-    '''**#UIM** -- various image header information'''
+
+    """**#UIM** -- various image header information"""
 
     key = '#UIM\w*'
     
@@ -52,4 +53,4 @@ class UIM_generic(ControlLineHandler):
         if not hasattr(spec_obj, 'UIM'):
             spec_obj.UIM = []
 
-        spec_obj.UIM.append( text )
+        spec_obj.UIM.append(text)

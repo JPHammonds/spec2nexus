@@ -3,7 +3,7 @@
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
@@ -11,7 +11,7 @@
 #-----------------------------------------------------------------------------
 
 
-'''
+"""
 Save columns from SPEC data file scan(s) to TSV files
 
 .. note:: TSV: tab-separated values
@@ -24,7 +24,7 @@ Save columns from SPEC data file scan(s) to TSV files
 .. note:: sdpecified column names **MUST** appear in all chosen scans
 
 Compatible with Python 2.7+
-'''
+"""
 
 from __future__ import print_function
 
@@ -32,7 +32,7 @@ __url__ = 'http://spec2nexus.readthedocs.org/en/latest/extractSpecScan.html'
 
 import os
 import sys
-import spec
+from spec2nexus import spec
 
 
 #-------------------------------------------------------------------------------------------
@@ -47,7 +47,7 @@ REPORTING_VERBOSE  = 'verbose'
 
 
 def makeOutputFileName(specFile, scanNum):
-    '''
+    """
     return an output file name based on specFile and scanNum
     
     :param str specFile: name of existing SPEC data file to be read
@@ -68,7 +68,7 @@ def makeOutputFileName(specFile, scanNum):
     CeCoIn5.dat  scan 77    CeCoIn5_77.dat
     CeCoIn5.dat  scan 5.1   CeCoIn5_5_1.dat
     ===========  ========   ===============
-    '''
+    """
     name_parts = os.path.splitext(specFile)
     scan_number = str(scanNum).replace('.', '_')
     outFile = name_parts[0] + '_' + scan_number + name_parts[1]
@@ -93,19 +93,21 @@ def expand_scan_range_terms(scans):
 
 
 def get_user_parameters():
-    '''configure user's command line parameters from sys.argv'''
+    """configure user's command line parameters from sys.argv"""
     import argparse
-    import __init__
+    from spec2nexus._version import get_versions
+    version = get_versions()['version']
+
     doc = __doc__.strip().splitlines()[0]
     doc += '\n  URL: ' + __url__
-    doc += '\n  v' + __init__.__version__
+    doc += '\n  v' + version
     parser = argparse.ArgumentParser(prog='extractSpecScan', description=doc)
 
     parser.add_argument('-v',
                         '--version', 
                         action='version',
                         help='print version number and exit',
-                        version=__init__.__version__)
+                        version=version)
 
     msg = 'do not write column labels to output file (default: write labels)'
     parser.add_argument('--nolabels', 
@@ -188,7 +190,7 @@ def get_user_parameters():
 
 
 def main():
-    '''
+    """
     read the data file, find each scan, find the columns, save the data
     
     :param [str] cmdArgs: Namespace from argparse, returned from get_user_parameters()
@@ -208,7 +210,7 @@ def main():
         1.9725    64845    352
         1.9975    65449    478
     
-    '''
+    """
     cmdArgs = get_user_parameters()
 
     if cmdArgs.reporting_level in (REPORTING_STANDARD, REPORTING_VERBOSE):

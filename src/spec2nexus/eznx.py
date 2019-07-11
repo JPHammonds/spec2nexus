@@ -4,7 +4,7 @@
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
@@ -12,7 +12,7 @@
 #-----------------------------------------------------------------------------
 
 
-'''
+"""
 (Easy NeXus) support reading & writing NeXus HDF5 files using h5py
 
 :predecessor: NeXus h5py example code: ``my_lib.py`` [#]_
@@ -30,21 +30,17 @@
 * None
 
 
-.. rubric:: Example (using ipython)
+.. rubric:: Example
 
 ::
 
-    In [1]: from spec2nexus import eznx
-    In [2]: root = eznx.makeFile('test.h5', creator='eznx', default='entry')
-    In [3]: nxentry = eznx.makeGroup(root, 'entry', 'NXentry')
-    In [4]: eznx.write_dataset(nxentry, 'title', 'simple test data', default='data')
-    Out[4]: <HDF5 dataset "title": shape (), type "|O8">
-    In [5]: nxdata = eznx.makeGroup(nxentry, 'data', 'NXdata', signal='counts', axes='tth', tth_indices=0)
-    In [6]: eznx.write_dataset(nxdata, 'tth', [10.0, 10.1, 10.2, 10.3], units='degrees')
-    Out[6]: <HDF5 dataset "tth": shape (4,), type "<f8">
-    In [7]: eznx.write_dataset(nxdata, 'counts', [1, 50, 1000, 5], units='counts')
-    Out[7]: <HDF5 dataset "counts": shape (4,), type "<i8">
-    In [8]: root.close()
+    root = eznx.makeFile('test.h5', creator='eznx', default='entry')
+    nxentry = eznx.makeGroup(root, 'entry', 'NXentry', default='data')
+    ds = eznx.write_dataset(nxentry, 'title', 'simple test data')
+    nxdata = eznx.makeGroup(nxentry, 'data', 'NXdata', signal='counts', axes='tth', tth_indices=0)
+    ds = eznx.write_dataset(nxdata, 'tth', [10.0, 10.1, 10.2, 10.3], units='degrees')
+    ds = eznx.write_dataset(nxdata, 'counts', [1, 50, 1000, 5], units='counts', axes="tth")
+    root.close()
 
 .. index:: NeXus structure; SPEC data
 
@@ -56,12 +52,12 @@ The resulting (binary) data file has this structure::
       entry:NXentry
         @NX_class = NXentry
         @default = 'data'
-        title:NX_data = simple test data
+        title:NX_CHAR = simple test data
         data:NXdata
           @NX_class = NXdata
           @signal = 'counts'
           @axes = 'tth'
-          @axes_indices = 0
+          @tth_indices = 0
           counts:NX_INT64[4] = [1, 50, 1000, 5]
             @units = counts
             @axes = tth
@@ -71,11 +67,12 @@ The resulting (binary) data file has this structure::
 
 .. rubric::  Classes and Methods
 
-'''
+"""
 
 
 import h5py    # HDF5 support
-#import numpy   # in this case, provides data structures
+import numpy
+import six
 
 
 def makeFile(filename, **attr):
@@ -117,13 +114,13 @@ def makeGroup(parent, name, nxclass, **attr):
 
 
 def openGroup(parent, name, nx_class, **attr):
-    '''open or create the NeXus/HDF5 group, return the object
+    """open or create the NeXus/HDF5 group, return the object
 
     :param obj parent: h5py parent object
     :param str name: valid NeXus group name to open or create
     :param str nxclass: valid NeXus class name (base class or application definition)
     :param dict attr: optional dictionary of attributes
-    '''
+    """
     try:
         group = parent[name]
         addAttributes(group, **attr)
@@ -148,21 +145,28 @@ def makeDataset(parent, name, data = None, **attr):
     if data is None:
         obj = parent.create_dataset(name)
     else:
-        if isinstance(data, float) or isinstance(data, int) or isinstance(data, str):
-            data = [data,]
-        obj = parent.create_dataset(name, data=data)
+        # storing-a-list-of-strings-to-a-hdf5-dataset-from-python
+        # https://stackoverflow.com/questions/23220513/
+        # [n.encode("ascii", "ignore") for n in data]
+        def encoder(value):
+            if isinstance(value, six.string_types):
+                return value.encode("ascii", "ignore")
+            return value
+
+        if not isinstance(data, (tuple, list, numpy.ndarray)):
+            data = [data, ]
+        obj = parent.create_dataset(name, data=list(map(encoder, data)))
     addAttributes(obj, **attr)
     return obj
 
-
 def write_dataset(parent, name, data, **attr):
-    '''write to the NeXus/HDF5 dataset, create it if necessary, return the object
+    """write to the NeXus/HDF5 dataset, create it if necessary, return the object
 
     :param obj parent: h5py parent object
     :param str name: valid NeXus dataset name to write
     :param obj data: the information to be written
     :param dict attr: optional dictionary of attributes
-    '''
+    """
     try:
         dset = parent[name]
         dset[:] = data
@@ -184,10 +188,9 @@ def makeLink(parent, sourceObject, targetName):
     if not 'target' in sourceObject.attrs:
         # NeXus link, NOT an HDF5 link!
         sourceObject.attrs["target"] = str(sourceObject.name)
-    import h5py.h5g
-    source_name = str.encode(str(sourceObject.name))
-    new_name = str.encode(str(targetName))
-    parent._id.link(source_name, new_name, h5py.h5g.LINK_HARD)
+    str_source = sourceObject.name.encode("ascii", "ignore")
+    str_target = targetName.encode("ascii", "ignore")
+    parent[str_target] = parent[str_source]
 
 
 def makeExternalLink(hdf5FileObject, sourceFile, sourcePath, targetPath):
@@ -219,20 +222,20 @@ def addAttributes(parent, **attr):
     :param obj parent: h5py parent object
     :param dict attr: optional dictionary of attributes
     """
-    if attr and type(attr) == type({}):
+    if isinstance(attr, dict):
         # attr is a dictionary of attributes
         for k, v in attr.items():
             parent.attrs[k] = v
 
 
 def read_nexus_field(parent, dataset_name, astype=None):
-    '''
+    """
     get a dataset from the HDF5 parent group
     
     :param obj parent: h5py parent object
     :param str dataset_name: name of the dataset (NeXus field) to be read
     :param obj astype: option to return as different data type
-    '''
+    """
     try:
         dataset = parent[dataset_name]
     except KeyError:
@@ -249,7 +252,7 @@ def read_nexus_field(parent, dataset_name, astype=None):
 
 
 def read_nexus_group_fields(parent, name, fields):
-    '''
+    """
     return the fields in the NeXus group as a dict(name=dataset)
     
     This routine provides a mass way to read a directed list
@@ -260,6 +263,6 @@ def read_nexus_group_fields(parent, name, fields):
     :param [name] fields: list of field names to be read
     :returns: dictionary of {name:dataset}
     :raises KeyError: if a field is not found
-    '''
+    """
     group = parent[name]
     return {key: read_nexus_field(group, key) for key in fields}

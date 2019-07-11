@@ -2,7 +2,7 @@
 #-----------------------------------------------------------------------------
 # :author:    Pete R. Jemian
 # :email:     prjemian@gmail.com
-# :copyright: (c) 2014-2017, Pete R. Jemian
+# :copyright: (c) 2014-2019, Pete R. Jemian
 #
 # Distributed under the terms of the Creative Commons Attribution 4.0 International Public License.
 #
@@ -26,6 +26,10 @@ if _path not in sys.path:
 def suite(*args, **kw):
     from tests import data_03_06_JanTest
     from tests import test_extractSpecScan
+    from tests import test_eznx
+    from tests import test_md_apstools_specwriter
+    from tests import test_multiple_headers
+    from tests import test_nexus
     from tests import test_plugin
     from tests import test_scanf
     from tests import test_spec
@@ -35,10 +39,18 @@ def suite(*args, **kw):
     from tests import test_XPCSplugin
     from tests import issue64
     from tests import issue99_hklscan
-    test_suite = unittest.TestSuite()
+    from tests import issue107
+    from tests import issue119
+    from tests import issue123
+    from tests import issue161
+
     test_list = [
         data_03_06_JanTest,
         test_extractSpecScan,
+        test_eznx,
+        test_md_apstools_specwriter,
+        test_multiple_headers,
+        test_nexus,
         test_plugin,
         test_scanf,
         test_spec,
@@ -48,8 +60,13 @@ def suite(*args, **kw):
         test_XPCSplugin,
         issue64,
         issue99_hklscan,
+        issue107,
+        issue119,
+        issue123,
+        issue161,
         ]
 
+    test_suite = unittest.TestSuite()
     for test in test_list:
         test_suite.addTest(test.suite())
     return test_suite
