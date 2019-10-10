@@ -27,6 +27,15 @@ specifying the file reference (by path reference as needed)
 and the internal routines will take care of all that is necessary
 to read and interpret the information.
 
+.. autosummary::
+   
+    ~is_spec_file
+    ~is_spec_file_with_header
+    ~SpecDataFile
+    ~SpecDataFileHeader
+    ~SpecDataFileScan
+
+
 ..  -----------------------------------------------------------------------------------------
     old documentation
     -----------------------------------------------------------------------------------------
@@ -116,11 +125,10 @@ Try to read a file that does not exist:
 from collections import OrderedDict
 import os
 import time
-from spec2nexus.utils import get_all_plugins
+from . import plugin
 
 
-plugin_manager = None   # will initialize when SpecDataFile is first called
-UNRECOGNIZED_KEY = 'unrecognized control line'
+UNRECOGNIZED_KEY = 'unrecognized_control_line'
 MCA_DATA_KEY = '_mca_'
 
 
@@ -204,7 +212,23 @@ def is_spec_file_with_header(filename):
 class SpecDataFile(object):
 
     """
-    contents of a spec data file
+    contents of a SPEC data file
+
+    .. autosummary::
+
+        ~dissect_file
+        ~getFirstScanNumber
+        ~getLastScanNumber
+        ~getMaxScanNumber
+        ~getMinScanNumber
+        ~getScan
+        ~getScanCommands
+        ~getScanNumbers
+        ~getScanNumbersChronological
+        ~read
+        ~refresh
+        ~update_available
+
     """
 
     fileName = ''
@@ -214,30 +238,94 @@ class SpecDataFile(object):
     readOK = -1
 
     def __init__(self, filename):
-        global plugin_manager
         self.fileName = None
         self.headers = []
         self.scans = OrderedDict()
         self.readOK = -1
-        if not os.path.exists(filename):
-            raise SpecDataFileNotFound('file does not exist: ' + str(filename))
-        if not is_spec_file(filename):
-            raise NotASpecDataFile('not a SPEC data file: ' + str(filename))
-        self.fileName = filename
+        self.last_scan = None
+        self.mtime = 0
+        self.filesize = 0
 
-        if plugin_manager is None:
-            plugin_manager = get_all_plugins()
-        self.plugin_manager = plugin_manager
+        if filename is not None:
+            if not os.path.exists(filename):
+                raise SpecDataFileNotFound(
+                    'file does not exist: ' + str(filename))
+            if not is_spec_file(filename):
+                raise NotASpecDataFile(
+                    'not a SPEC data file: ' + str(filename))
+            self.fileName = filename
 
-        self.read()
+            self.read()
     
     def __str__(self):
         return self.fileName or 'None'
+    
+    @property
+    def update_available(self):
+        """
+        Has the file been updated since the last time it was read?
+        
+        Reference file modification time is stored *after* 
+        file is read in :meth:`read()` method.
+        
+        EXAMPLE USAGE
+
+        Open the SPEC data file (example):
+        
+            sdf = spec.SpecDataFile(filename)
+        
+        then, monitor (continuing example):
+        
+            if sdf.update_available:
+                myLastScan = sdf.last_scan
+                sdf.read()
+                plot_scan_and_newer(myLastScan)    # new method
+                myLastScan = sdf.last_scan
+        
+        .. note: The previous last_scan is reprocessed since 
+           that scan may not have been complete when the file 
+           was read() previously.
+
+        """
+        same_mtime = self.mtime == os.path.getmtime(self.fileName)
+        same_size = self.filesize == os.path.getsize(self.fileName)
+        identical = same_mtime and same_size
+        return not identical
+
+    def refresh(self):
+        """
+        update (refresh) the content if the file is updated
+    
+        returns previous last_scan or None if file not updated
+
+        .. caution:  previous last_scan must be re-created if updated
+        
+           After calling :meth:`refresh()`, any client
+           with an object of the previous last scan
+           should get a new object with the update data.  
+           
+           EXAMPLE::
+           
+               scan = sdf.getScan(42)
+               checkpoint = sdf.refresh()
+               if checkpoint is not None:
+                   scan = sdf.getScan(checkpoint)    # get updates
+
+        """
+        if self.update_available:
+            previous_scan = self.last_scan
+            
+            self.read()
+            return previous_scan
+        return None
 
     def _read_file_(self, spec_file_name):
         """Reads a spec data file"""
+        if not os.path.exists(spec_file_name):
+            raise SpecDataFileNotFound('file does not exist: ' + str(spec_file_name))
         try:
-            buf = open(spec_file_name, 'r').read()
+            with open(spec_file_name, 'r') as fp:
+                buf = fp.read()
         except IOError:
             msg = 'Could not open spec file: ' + str(spec_file_name)
             raise SpecDataFileCouldNotOpen(msg)
@@ -263,11 +351,11 @@ class SpecDataFile(object):
             text with one of the above control lines at its start 
         
         """
-        buf = self._read_file_(self.fileName)
+        buf = self._read_file_(self.fileName).splitlines()
         
         sections, block = [], []
         
-        for _line_num, text in enumerate(buf.splitlines()):
+        for _line_num, text in enumerate(buf):
             if len(text.strip()) > 0:
                 f = text.split()[0]
                 if len(f) == 2 and f in ("#E", "#F", "#S"):
@@ -282,12 +370,13 @@ class SpecDataFile(object):
 
     def read(self):
         """Reads and parses a spec data file"""
+        manager = plugin.get_plugin_manager()
         sections = self.dissect_file()
         for block in sections:
             if len(block) == 0:
                 continue
-            key = self.plugin_manager.getKey(block.splitlines()[0])
-            self.plugin_manager.process(key, block, self)
+            key = manager.getKey(block.splitlines()[0])
+            manager.process(key, block, self)
             
             if key == "#S":
                 scan = list(self.scans.values())[-1]
@@ -295,17 +384,21 @@ class SpecDataFile(object):
                     if len(line) > 0:
                         key = line.split()[0]
                         if key in ("#D",):
-                            self.plugin_manager.process(key, line, scan)
+                            manager.process(key, line, scan)
                             break
         
         # fix any missing parts
         if not hasattr(self, "specFile"):
             self.specFile = self.fileName
+
+        self.last_scan = self.getLastScanNumber()
+        self.filesize = os.path.getsize(self.fileName)
+        self.mtime = os.path.getmtime(self.fileName)
     
     def getScan(self, scan_number=0):
         """return the scan number indicated, None if not found"""
         if int(float(scan_number)) < 1:
-            # relative scan referrence
+            # relative scan reference
             scanlist = self.getScanNumbers()
             scan_number = list(scanlist)[int(scan_number)]
         scan_number = str(scan_number)
@@ -347,8 +440,7 @@ class SpecDataFile(object):
     
     def getScanCommands(self, scan_list=None):
         """return all the scan commands as a list, with scan number"""
-        if scan_list is None:
-            scan_list = self.getScanNumbers()
+        scan_list = scan_list or self.getScanNumbers()
         commands = []
         for key in scan_list:
             scan = self.getScan(key)
@@ -361,7 +453,18 @@ class SpecDataFile(object):
 
 
 class SpecDataFileHeader(object):
-    """contents of a spec data file header (#E) section"""
+    """
+    contents of a spec data file header (#E) section
+
+    .. autosummary::
+
+        ~get_macro_name
+        ~interpret
+        ~addPostProcessor
+        ~addH5writer
+        ~getLatestScan
+
+    """
 
     def __init__(self, buf, parent = None):
         #----------- initialize the instance variables
@@ -381,21 +484,22 @@ class SpecDataFileHeader(object):
 
     def interpret(self):
         """ interpret the supplied buffer with the spec data file header"""
+        manager = plugin.get_plugin_manager()
         for _i, line in enumerate(self.raw.splitlines(), start=1):
             if len(line) == 0:
                 continue            # ignore blank lines
-            key = self.parent.plugin_manager.getKey(line)
+            key = manager.getKey(line)
             if key is None:
                 # log message instead of raise exception
                 # https://github.com/prjemian/spec2nexus/issues/57
                 # raise UnknownSpecFilePart("line %d: unknown header line: %s" % (_i, line))
                 key = UNRECOGNIZED_KEY
-                self.parent.plugin_manager.process(key, line, self)
+                manager.process(key, line, self)
             elif key == '#E':
                 pass    # avoid recursion
             else:
                 # most of the work is done here
-                self.parent.plugin_manager.process(key, line, self)
+                manager.process(key, line, self)
 
         # call any post-processing hook functions from the plugins
         for func in self.postprocessors.values():
@@ -431,15 +535,20 @@ class SpecDataFileHeader(object):
 
 #-------------------------------------------------------------------------------------------
 
-LAZY_INTERPRET_SCAN_DATA_ATTRIBUTES = [
-    'comments', 'data', 'data_lines', 'G', 'I',
-    'L', 'M', 'positioner', 'N', 'P', 'Q', 'T', 'U',
-    'column_first', 'column_last',
-]
-
-
 class SpecDataFileScan(object):
-    """contents of a spec data file scan (#S) section"""
+    """
+    contents of a spec data file scan (#S) section
+
+    .. autosummary::
+
+        ~get_macro_name
+        ~interpret
+        ~add_interpreter_comment
+        ~get_interpreter_comments
+        ~addPostProcessor
+        ~addH5writer
+
+    """
 
     def __init__(self, header, buf, parent=None):
         self.parent = parent        # instance of SpecDataFile
@@ -478,8 +587,8 @@ class SpecDataFileScan(object):
         self.postprocessors = {}
         self.h5writers = {}
     
-        # the attributes defined in LAZY_INTERPRET_SCAN_DATA_ATTRIBUTES
-        # (and perhaps others) are set only after a call to self.interpret()
+        # the attributes defined in PluginManager().lazy_attributes
+        # are set only after a call to self.interpret()
         # That call is triggered on the first call for any of these attributes.
         self.__lazy_interpret__ = True
         self.__interpreted__ = False
@@ -488,7 +597,8 @@ class SpecDataFileScan(object):
         return self.S
     
     def __getattribute__(self, attr):
-        if attr in LAZY_INTERPRET_SCAN_DATA_ATTRIBUTES:
+        manager = plugin.get_plugin_manager()
+        if attr in manager.lazy_attributes:
             if self.__lazy_interpret__:
                 self.interpret()
         return object.__getattribute__(self, attr)
@@ -501,6 +611,7 @@ class SpecDataFileScan(object):
 
     def interpret(self):
         """interpret the supplied buffer with the spec scan data"""
+        manager = plugin.get_plugin_manager()
         if self.__interpreted__:    # do not do this twice
             return
         self.__lazy_interpret__ = False     # set now to avoid recursion
@@ -508,7 +619,7 @@ class SpecDataFileScan(object):
         for _i, line in enumerate(lines, start=1):
             if len(line) == 0:
                 continue            # ignore blank lines
-            key = self.parent.plugin_manager.getKey(line.lstrip())
+            key = manager.getKey(line.lstrip())
             if key is None:
                 # __s__ = '<' + line + '>'
                 # _msg = "scan %s, line %d: unknown key, ignored text: %s" % (str(self.scanNum), _i, line)
@@ -516,10 +627,10 @@ class SpecDataFileScan(object):
                 # log message instead of raise exception
                 # https://github.com/prjemian/spec2nexus/issues/57
                 key = UNRECOGNIZED_KEY
-                self.parent.plugin_manager.process(key, line, self)
+                manager.process(key, line, self)
             elif key != '#S':        # avoid recursion
                 # most of the work is done here
-                self.parent.plugin_manager.process(key, line, self)
+                manager.process(key, line, self)
 
         # call any post-processing hook functions from the plugins
         for func in self.postprocessors.values():

@@ -18,9 +18,9 @@
 import h5py
 import numpy as np
 
-import spec2nexus.eznx as eznx
-import spec2nexus.spec as spec
-import spec2nexus.utils as utils
+from . import eznx
+from . import spec
+from . import utils
  
 
 # see: http://download.nexusformat.org/doc/html/classes/base_classes/index.html
@@ -166,39 +166,44 @@ class Writer(object):
             signal, axes = self.mesh(nxdata, scan)
         elif scan_type in ('hscan', 'kscan', 'lscan', 'hklscan'):
             # hklscan  1.00133 1.00133  1.00133 1.00133  2.85 3.05  200 -400000
-            # FIXME:
-            # h_0, h_N, k_0, k_N, l_0, l_N = scan.scanCmd.split()[1:7]
-            # TODO: why bother defining axes here?  Not used.  issue #155
-            # if h_0 != h_N: 
-            #     axes = ['H',]
-            # elif k_0 != k_N: 
-            #     axes = ['K',]
-            # elif l_0 != l_N: 
-            #     axes = ['L',]
-            # FIXME: signal, axes = self.oneD(nxdata, scan)
-            raise NotImplementedError("hklscan save_data() not yet implemented")
+            signal = self.oneD(nxdata, scan)[0]
+            axes = []
+            h_0, h_N, k_0, k_N, l_0, l_N = scan.scanCmd.split()[1:7]
+            if h_0 != h_N:
+                axes.append('H')
+            if k_0 != k_N:
+                axes.append('K')
+            if l_0 != l_N:
+                axes.append('L')
+            axes = ":".join(axes)
         else:
             signal, axes = self.oneD(nxdata, scan)
 
         # these locations suggested to NIAC, easier to parse than attached to dataset!
-        if len(signal) == 0:
-            pass
+        # if len(signal) == 0:
+        #     pass
         
         # Syntax of axes attribute (http://wiki.nexusformat.org/2014_axes_and_uncertainties):
         #  @axes="H:K"       INCOREECT
         #  @axes="H", "K"    CORRECT
         if axes.find(':') >= 0:
-            axes = axes.split(':')
+            def fixer(s):
+                # h5py requires list of strings to be encoded
+                # see: https://stackoverflow.com/questions/23220513/storing-a-list-of-strings-to-a-hdf5-dataset-from-python
+                return s.encode("ascii", "ignore")
+            axes = list(map(fixer, axes.split(":")))
         eznx.addAttributes(nxdata, signal=signal, axes=axes)
-        #eznx.addAttributes(nxdata[signal], signal=1, axes=axes)    # deprecated now
-        # assume here that "axis_name" has rank=1
-        # TODO: test that scan.data[axis_name] has rank=1
         indices = [0,]     # 0-based reference
         if isinstance(axes, str):
             eznx.addAttributes(nxdata, **{axes+'_indices': indices})
         else:
             for axis_name in axes:
-                eznx.addAttributes(nxdata, **{axis_name+'_indices': indices})
+                axis_name = axis_name.decode("utf-8") 
+                # assume here that "axis_name" has rank=1
+                # if scan.data[axis_name] != 1:
+                #     pass    # TODO: and do what?
+                k = "%s%s" % (axis_name, '_indices')
+                eznx.addAttributes(nxdata, **{k: indices})
     
     def oneD(self, nxdata, scan):
         """*internal*: generic data parser for 1-D column data, returns signal and axis"""
@@ -284,8 +289,8 @@ class Writer(object):
                 if label not in nxdata:
                     axis = np.array( scan.data.get(label) )
                     self.write_ds(nxdata, label, utils.reshape_data(axis, data_shape))
-                else:
-                    pass
+                # else:
+                #     pass
 
             signal = utils.clean_name(scan.column_last)
             axes = ':'.join([label1, label2])

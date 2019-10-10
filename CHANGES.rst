@@ -4,11 +4,89 @@
 Change History
 ##############
 
+.. note:: Python 2 end of support
+
+   spec2nexus will stop development for Python 2 by 2019-12-31.
+   For more information, visit https://python3statement.org/.
+
+
 Production
 **********
 
-:2020.0.2: expected *2019.07.09*, bug fixes and code review suggestions
+:2021.1.4: expected *2019.09*
 
+:2021.1.3: released *2019.08.19* - only update plots with *new* content
+
+    * `#202 <https://github.com/prjemian/spec2nexus/issues/202>`_
+       specplot_gallery: switch to SVG (from PNG) for plots
+    * `#201 <https://github.com/prjemian/spec2nexus/issues/201>`_
+       spec: subsequent calls to read() duplicate scans -- FIXED
+    * `#126 <https://github.com/prjemian/spec2nexus/issues/126>`_
+       spec: new ``update_available`` property
+    * `#108 <https://github.com/prjemian/spec2nexus/issues/108>`_
+       specplot_gallery: only update plots with *new* content
+
+:2021.1.2: released *2019.08.15*, plugin enhancements
+
+    * `#197 <https://github.com/prjemian/spec2nexus/issues/197>`_
+       plugins: handle empty empty #O0 or #P0 list
+    * `#195 <https://github.com/prjemian/spec2nexus/issues/195>`_
+       drop CII badge: not useful to spec2nexus
+    * `#190 <https://github.com/prjemian/spec2nexus/issues/190>`_
+       writer: link content into NXinstrument group
+    * `#51 <https://github.com/prjemian/spec2nexus/issues/51>`_
+       plugins: interpret #Gn control lines
+
+:2021.1.1: released *2019.07.22*, refactor
+    
+    * `#181 <https://github.com/prjemian/spec2nexus/issues/181>`_
+       plugins: revised technique to load control line handlers
+
+:2021.1.0: released *2019.07.15*, new features
+    
+    **NEW**
+    
+    * support for ``#UXML`` metadata
+    * support for ``hklscan`` scans
+    * improved support for ``mesh`` and ``hklmesh`` scans
+    
+    * `#159 <https://github.com/prjemian/spec2nexus/issues/159>`_
+       handle #UXML metadata control lines
+    * `#155 <https://github.com/prjemian/spec2nexus/issues/155>`_
+       module: writer - recognize hklscan
+    * `#150 <https://github.com/prjemian/spec2nexus/issues/150>`_
+       module: writer - increase coverage of unit tests: mesh, hklmesh
+    * `#148 <https://github.com/prjemian/spec2nexus/issues/148>`_
+       module: eznx - increase coverage of unit tests
+
+:2021.0.1: released *2019.07.13*, plugin loading and documentation
+
+    * `#170 <https://github.com/prjemian/spec2nexus/issues/170>`_
+       describe how to write & load Control Line Handler plugins
+    * `#169 <https://github.com/prjemian/spec2nexus/issues/169>`_
+       announce deprecation of python 2
+    * `#165 <https://github.com/prjemian/spec2nexus/issues/165>`_
+       resolve conda build error
+    * `#149 <https://github.com/prjemian/spec2nexus/issues/149>`_
+       unit tests: ``units`` module
+
+:2021.0.0: released *2019.07.12*, API change affecting plugins
+
+    **API change**:
+    Changed how plugins are defined and registered.
+    Custom plugins must be modified and import code revised
+    to work with new system.
+    
+    * `#168 <https://github.com/prjemian/spec2nexus/pull/168>`_
+       plugins are now self-registering
+    * `#166 <https://github.com/prjemian/spec2nexus/issues/166>`_
+       fix conda packaging
+
+:2020.0.2: released *2019.07.09*, bug fixes and code review suggestions
+
+    NOTE: conda package is broken (no plugins directory).  
+    Only use ``pip install spec2nexus`` with this release.
+    
     * `#164 <https://github.com/prjemian/spec2nexus/issues/164>`_
        post conda packages to `aps-anl-tag` channel
     * `#161 <https://github.com/prjemian/spec2nexus/issues/161>`_
@@ -18,7 +96,7 @@ Production
     * `#153 <https://github.com/prjemian/spec2nexus/issues/153>`_
        LGTM code review
 
-:2020.0.0: *2019.05.16*, major release
+:2020.0.0: released *2019.05.16*, major release
 
     * `#145 <https://github.com/prjemian/spec2nexus/issues/145>`_
        unit tests for header content
@@ -31,14 +109,14 @@ Production
     * `#70 <https://github.com/prjemian/spec2nexus/issues/70>`_
        remove h5toText, find this now in `punx` package
 
-:2019.0503.0: 2019.05.03, tag
+:2019.0503.0: released *2019.05.03*, tag
 
     * `#142 <https://github.com/prjemian/spec2nexus/issues/142>`_
        DuplicateSpecScanNumber with multiple #F sections
     * `#137 <https://github.com/prjemian/spec2nexus/issues/137>`_
        (again) bug in #U control line handling
 
-:2019.0501.0: 2019.05.01, tag
+:2019.0501.0: released *2019.05.01*, tag
 
     * `#137 <https://github.com/prjemian/spec2nexus/issues/137>`_
        bug in #U control line handling

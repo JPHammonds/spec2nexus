@@ -20,13 +20,14 @@ before_script:
   - bash miniconda.sh -b -p $HOME/miniconda
   - export PATH=$HOME/miniconda/bin:$PATH
   - export PY_ENV=travis-$TRAVIS_PYTHON_VERSION
-  - conda create -y -n $PY_ENV python=$TRAVIS_PYTHON_VERSION numpy MatPlotLib h5py coverage docopt
+  - conda create -y -n $PY_ENV python=$TRAVIS_PYTHON_VERSION --file=requirements.txt
   - source activate $PY_ENV
   - which pip
   - which python
   - which conda
   - python --version
   - pip install coveralls
+  - pip install pyRestTable
   - which coveralls
 
 # command to run tests
@@ -38,5 +39,5 @@ after_success:
   - coverage report -m
   - which coveralls
   - coveralls
-  - source deactivate
+  - conda deactivate
   - conda env remove -y -n $PY_ENV
